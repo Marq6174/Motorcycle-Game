@@ -250,6 +250,7 @@
       letter-spacing: 1px;
     }
 
+    /* Enhanced Win Modal with Continue Controls */
     #win-modal {
       border: 4px solid #22c55e;
       background: radial-gradient(circle at top, rgba(16, 185, 129, 0.25), rgba(15, 23, 42, 0.98));
@@ -401,11 +402,22 @@
       <button class="btn btn-success" style="padding: 10px 24px; font-size: 14px;" onclick="resumeAfterResetNotification()">Continue (<span id="reset-done-timer">4</span>s)</button>
     </div>
 
+    <!-- PATIENT SAVED MODAL (With Continue & Next Goal Selector) -->
     <div id="win-modal" class="game-modal">
       <div id="win-title">PATIENT SAVED!</div>
       <div id="win-badge">★ Mission Accomplished ★</div>
-      <div class="modal-subtitle">Emergency medical delivery arrived in time! The patient has been saved.</div>
-      <button class="btn btn-success" style="padding: 12px 28px; font-size: 15px; font-weight: 800; background: linear-gradient(135deg, #10b981, #059669); border: none; box-shadow: 0 0 20px rgba(16, 185, 129, 0.6);" onclick="resetGameAfterWin()">Start Next Run (<span id="win-timer">5</span>s)</button>
+      <div class="modal-subtitle" style="margin-bottom: 12px;">Emergency medical delivery arrived in time! The patient has been saved.</div>
+
+      <div style="margin: 12px 0 20px 0; display: flex; align-items: center; justify-content: center; gap: 8px;">
+        <span style="color:#94a3b8; font-weight:700; font-size:14px;">Next Goal:</span>
+        <input type="number" id="winNextGoalInput" value="500" step="50" min="10" style="width: 90px; background: #0f172a; border: 1.5px solid #38bdf8; color: #fff; padding: 6px 10px; border-radius: 6px; font-weight: 800; font-size: 16px; text-align: center; outline: none;" />
+        <span style="color:#38bdf8; font-weight:800; font-size:14px;">PTS</span>
+      </div>
+
+      <div style="display: flex; gap: 12px; justify-content: center; align-items: center; flex-wrap: wrap;">
+        <button class="btn btn-primary" style="padding: 12px 26px; font-size: 15px; font-weight: 800; background: linear-gradient(135deg, #0284c7, #0369a1); border: none; box-shadow: 0 0 20px rgba(56, 189, 248, 0.5);" onclick="continueGameAfterWin()">Continue Run ➔</button>
+        <button class="btn" style="padding: 12px 22px; font-size: 14px; font-weight: 700; background: #334155; border: 1px solid #475569;" onclick="resetGameAfterWin()">Start Next Run (Reset)</button>
+      </div>
     </div>
 
     <div id="lose-modal" class="game-modal">
@@ -453,6 +465,7 @@
     const scoreValEl = document.getElementById('scoreVal');
     const hudGoalInput = document.getElementById('hudGoalInput');
     const goalInput = document.getElementById('goalInput');
+    const winNextGoalInput = document.getElementById('winNextGoalInput');
     const tiktokDock = document.getElementById('tiktokDock');
     const tiktokInput = document.getElementById('tiktokInput');
     const tiktokStatusBadge = document.getElementById('tiktokStatusBadge');
@@ -464,7 +477,6 @@
     const resetCompleteModal = document.getElementById('reset-complete-modal');
     const resetDoneTimerEl = document.getElementById('reset-done-timer');
     const winModal = document.getElementById('win-modal');
-    const winTimerEl = document.getElementById('win-timer');
     const loseModal = document.getElementById('lose-modal');
     const loseReasonEl = document.getElementById('lose-reason');
     const loseTimerEl = document.getElementById('lose-timer');
@@ -708,20 +720,10 @@
       };
 
       triggerConfettiExplosion();
+
+      // Propose next goal target: current goal + 250
+      winNextGoalInput.value = (data.goalScore || goalScore) + 250;
       winModal.style.display = 'block';
-
-      let winSeconds = 5;
-      winTimerEl.textContent = winSeconds;
-
-      clearInterval(sequenceCountdownInterval);
-      sequenceCountdownInterval = setInterval(() => {
-        winSeconds--;
-        winTimerEl.textContent = winSeconds;
-        if (winSeconds <= 0) {
-          clearInterval(sequenceCountdownInterval);
-          resetGameAfterWin();
-        }
-      }, 1000);
 
       render();
     });
@@ -804,7 +806,6 @@
       }
     }
 
-    // Instantly stand up and jump (ducking will never lock the jump)
     function executeJump() {
       if (player.isGrounded && !isEndingSequence && !isPaused && !isCrashActive) {
         player.isDucking = false;
@@ -815,7 +816,6 @@
       }
     }
 
-    // Shorter, snappier duck duration (34 frames) so she stands back up promptly
     function executeDuck() {
       if (player.isGrounded && !isEndingSequence && !isPaused && !isCrashActive) {
         player.isDucking = true;
@@ -858,7 +858,26 @@
       socket.emit('spawnHazard', { hazardType: type, username: 'Host' });
     }
 
-    // --- KEYBOARD CONTROLS (INSTANT TAKEOVER) ---
+    // --- WIN MODAL ACTIONS ---
+    function resetGameAfterWin() {
+      winModal.style.display = 'none';
+      isWonState = false;
+      rescueVehicle = null;
+      confettiList.length = 0;
+      lightsPassedCounter = 0;
+      socket.emit('resetAfterWin');
+    }
+
+    function continueGameAfterWin() {
+      winModal.style.display = 'none';
+      isWonState = false;
+      rescueVehicle = null;
+      confettiList.length = 0;
+      lightsPassedCounter = 0;
+      const nextGoal = parseInt(winNextGoalInput.value, 10) || (score + 250);
+      socket.emit('continueAfterWin', nextGoal);
+    }
+
     window.addEventListener('keydown', (e) => {
       const key = e.key.toLowerCase();
       const isInputFocused = document.activeElement && (document.activeElement.tagName === 'INPUT');
@@ -888,20 +907,17 @@
       if (key === 'r') socket.emit('initiateResetCountdown');
       if (key === 's') socket.emit('saveAndResume');
 
-      // Manual Jump: sets a tiny 8-frame tap timer instead of 50
       if (e.key === 'ArrowUp' || e.code === 'Space') {
         player.manualSuppressionTimer = 8;
         executeJump();
       }
 
-      // Manual Duck: sets a tiny 8-frame tap timer
       if (e.key === 'ArrowDown') {
         player.manualSuppressionTimer = 8;
         executeDuck();
       }
     });
 
-    // Zero-delay release: auto-play reactivates instantly on key release
     window.addEventListener('keyup', (e) => {
       const key = e.key.toLowerCase();
       if (e.key === 'ArrowDown') {
@@ -916,16 +932,6 @@
 
     function triggerHostKey(k) {
       window.dispatchEvent(new KeyboardEvent('keydown', { key: k }));
-    }
-
-    function resetGameAfterWin() {
-      clearInterval(sequenceCountdownInterval);
-      winModal.style.display = 'none';
-      isWonState = false;
-      rescueVehicle = null;
-      confettiList.length = 0;
-      lightsPassedCounter = 0;
-      socket.emit('resetAfterWin');
     }
 
     function resumeAfterResetNotification() {
@@ -1049,7 +1055,6 @@
       }
     }
 
-    // --- REFINED & RESPONSIVE AUTO-ASSISTANCE ---
     function handleBackgroundAssistance() {
       if (isCrashActive || isEndingSequence) return;
 
@@ -1057,18 +1062,13 @@
         const obs = obstacles[i];
         const dist = obs.x - (player.x + player.width);
 
-        // Pothole auto-jump
         if (obs.type === 'pothole') {
-          // Lookahead up to 230px, with emergency override within 180px
           if (dist > 0 && dist < 230 && player.isGrounded) {
             if (player.manualSuppressionTimer <= 0 || dist < 180) {
               executeJump();
             }
           }
-        }
-        // Helicopter auto-duck
-        else if (obs.type === 'helicopter') {
-          // Lookahead up to 210px, with emergency override within 160px
+        } else if (obs.type === 'helicopter') {
           if (dist > 0 && dist < 210 && player.isGrounded) {
             if (player.manualSuppressionTimer <= 0 || dist < 160) {
               executeDuck();
@@ -1776,7 +1776,6 @@
         player.manualSuppressionTimer -= ts;
       }
 
-      // Auto-assistance runs every tick (with instant safety overrides)
       handleBackgroundAssistance();
 
       // Traffic Lights Spawning
@@ -1786,7 +1785,7 @@
         nextTrafficLightDist = 340 + Math.random() * 140;
       }
 
-      // Check Lights: Every 5 lights -> Queue completely random hazard
+      // Check Lights: Every 5 lights -> Queue random hazard
       for (let i = trafficLights.length - 1; i >= 0; i--) {
         const tl = trafficLights[i];
         tl.x -= moveStep;

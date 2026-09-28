@@ -7,7 +7,6 @@ const { WebcastPushConnection } = require('tiktok-live-connector');
 const app = express();
 const server = http.createServer(app);
 
-// Prevent browser caching
 app.use((req, res, next) => {
   res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
   res.setHeader('Pragma', 'no-cache');
@@ -17,17 +16,18 @@ app.use((req, res, next) => {
 
 const io = new Server(server, {
   cors: {
-    origin: ['http://localhost:3000', 'http://127.0.0.1:3000'],
+    origin: '*',
     methods: ['GET', 'POST']
   }
 });
 
 const PORT = 3000;
-const HOST = '127.0.0.1';
-
-const TIKTOK_USERNAME = process.env.TIKTOK_USERNAME || 'YOUR_TIKTOK_USERNAME';
+const HOST = '0.0.0.0';
 
 app.use(express.static(path.join(__dirname, 'public')));
+
+let currentTikTokUsername = process.env.TIKTOK_USERNAME || '';
+let tiktokLiveConnection = null;
 
 let gameState = {
   score: 0,
@@ -39,7 +39,9 @@ let gameState = {
   gameWon: false,
   isCrashing: false,
   crashStartTime: 0,
-  crashDuration: 2200
+  crashDuration: 2200,
+  tiktokUser: currentTikTokUsername,
+  tiktokConnected: false
 };
 
 let resetInterval = null;
@@ -102,13 +104,16 @@ function triggerCrashResetSequence() {
 }
 
 // --- TIKTOK LIVE CONNECTION ---
-let tiktokLiveConnection = null;
-
 function connectToTikTok(username) {
-  if (!username || username === 'YOUR_TIKTOK_USERNAME') {
-    console.log('[TikTok] No username set. Run with: TIKTOK_USERNAME=yourhandle node server.js');
-    return;
+  if (!username) return;
+
+  if (tiktokLiveConnection) {
+    try { tiktokLiveConnection.disconnect(); } catch (e) {}
+    tiktokLiveConnection = null;
   }
+
+  currentTikTokUsername = username;
+  gameState.tiktokUser = username;
 
   tiktokLiveConnection = new WebcastPushConnection(username, {
     processInitialData: false,
@@ -117,10 +122,14 @@ function connectToTikTok(username) {
 
   tiktokLiveConnection.connect()
     .then(state => {
-      console.log(`[TikTok] Connected to stream room: ${state.roomId}`);
+      console.log(`[TikTok] Connected to @${username} (Room: ${state.roomId})`);
+      gameState.tiktokConnected = true;
+      io.emit('tiktokStatus', { connected: true, username: username });
     })
     .catch(err => {
       console.error(`[TikTok] Connection error: ${err.message}`);
+      gameState.tiktokConnected = false;
+      io.emit('tiktokStatus', { connected: false, username: username, error: err.message });
     });
 
   tiktokLiveConnection.on('gift', data => {
@@ -136,7 +145,7 @@ function connectToTikTok(username) {
         giftName.includes('coffee') || giftName.includes('gg')) {
       chosenHazard = 'pothole';
     } else if (giftName.includes('galaxy') || giftName.includes('lion') || giftName.includes('car') || 
-             giftName.includes('plane') || giftName.includes('dragon') || giftName.includes('whale') ||
+             giftName.includes('plane') || giftName.includes('dragon') || giftName.includes('whale') || 
              giftName.includes('fireworks') || giftName.includes('hat') || giftName.includes('cap')) {
       chosenHazard = 'helicopter';
     } else {
@@ -147,15 +156,22 @@ function connectToTikTok(username) {
   });
 
   tiktokLiveConnection.on('disconnected', () => {
-    setTimeout(() => connectToTikTok(username), 10000);
+    gameState.tiktokConnected = false;
+    io.emit('tiktokStatus', { connected: false, username: username });
   });
 }
 
-connectToTikTok(TIKTOK_USERNAME);
+if (currentTikTokUsername) {
+  connectToTikTok(currentTikTokUsername);
+}
 
-// --- SOCKET.IO ROUTING ---
+// --- SOCKET.IO CLIENT ROUTING ---
 io.on('connection', (socket) => {
   socket.emit('stateSync', gameState);
+
+  socket.on('setTikTokUser', (username) => {
+    connectToTikTok(username.trim());
+  });
 
   socket.on('adjustScore', (delta) => {
     gameState.score += delta;
@@ -170,13 +186,34 @@ io.on('connection', (socket) => {
     checkServerGoal();
   });
 
-  // W Key: Force Instant Win
+  // Start Next Run (Resets score to 0)
+  socket.on('resetAfterWin', () => {
+    gameState.score = 0;
+    gameState.gameWon = false;
+    gameState.isPaused = false;
+    io.emit('scoreUpdated', { score: 0 });
+    io.emit('gameResumed', { score: 0 });
+  });
+
+  // Continue Run (Keeps current score & updates goal)
+  socket.on('continueAfterWin', (newGoal) => {
+    const parsed = Number(newGoal);
+    if (parsed && parsed > gameState.score) {
+      gameState.goalScore = parsed;
+    } else {
+      gameState.goalScore = gameState.score + 250;
+    }
+    gameState.gameWon = false;
+    gameState.isPaused = false;
+    io.emit('goalUpdated', { goalScore: gameState.goalScore });
+    io.emit('gameResumed', { score: gameState.score });
+  });
+
   socket.on('forceWin', () => {
     if (gameState.isCrashing || gameState.gameWon) return;
     triggerWinSequence();
   });
 
-  // L Key: Force Instant Crash Reset
   socket.on('forceResetCrash', () => {
     if (gameState.isCrashing) return;
     triggerCrashResetSequence();
@@ -190,14 +227,6 @@ io.on('connection', (socket) => {
     });
   });
 
-  socket.on('resetAfterWin', () => {
-    gameState.score = 0;
-    gameState.gameWon = false;
-    gameState.isPaused = false;
-    io.emit('scoreUpdated', { score: 0 });
-    io.emit('gameResumed', { score: 0 });
-  });
-
   socket.on('toggleManualPause', () => {
     if (gameState.resetTimerActive || gameState.isCrashing || gameState.gameWon) return;
     gameState.isManualPaused = !gameState.isManualPaused;
@@ -208,7 +237,6 @@ io.on('connection', (socket) => {
     });
   });
 
-  // 60-Second Countdown Reset
   socket.on('initiateResetCountdown', () => {
     if (gameState.resetTimerActive || gameState.isCrashing || gameState.gameWon) return;
 
@@ -230,7 +258,6 @@ io.on('connection', (socket) => {
     }, 1000);
   });
 
-  // Save & Resume
   socket.on('saveAndResume', () => {
     clearInterval(resetInterval);
     clearTimeout(crashTimeout);
@@ -254,7 +281,6 @@ io.on('connection', (socket) => {
 
 server.listen(PORT, HOST, () => {
   console.log(`========================================================`);
-  console.log(`🔒 Server active at http://${HOST}:${PORT}`);
-  console.log(`🎮 Shortcuts: [W] Instant Win | [L] Instant Crash | [F] +5`);
+  console.log(`🔒 Game Server running at http://${HOST}:${PORT}`);
   console.log(`========================================================`);
 });
