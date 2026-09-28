@@ -2,10 +2,12 @@ const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
 const path = require('path');
-const { WebcastPushConnection } = require('tiktok-live-connector');
 
 const app = express();
 const server = http.createServer(app);
+
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
 app.use((req, res, next) => {
   res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
@@ -26,9 +28,6 @@ const HOST = '0.0.0.0';
 
 app.use(express.static(path.join(__dirname, 'public')));
 
-let currentTikTokUsername = process.env.TIKTOK_USERNAME || '';
-let tiktokLiveConnection = null;
-
 let gameState = {
   score: 0,
   goalScore: 250,
@@ -39,9 +38,7 @@ let gameState = {
   gameWon: false,
   isCrashing: false,
   crashStartTime: 0,
-  crashDuration: 2200,
-  tiktokUser: currentTikTokUsername,
-  tiktokConnected: false
+  crashDuration: 2200
 };
 
 let resetInterval = null;
@@ -103,75 +100,36 @@ function triggerCrashResetSequence() {
   }, gameState.crashDuration);
 }
 
-// --- TIKTOK LIVE CONNECTION ---
-function connectToTikTok(username) {
-  if (!username) return;
+// --- TIKFINITY WEBHOOK ENDPOINTS ---
 
-  if (tiktokLiveConnection) {
-    try { tiktokLiveConnection.disconnect(); } catch (e) {}
-    tiktokLiveConnection = null;
-  }
+// 1. Trigger Hazard Endpoint (GET or POST)
+// Example: http://localhost:3000/api/hazard?type=pothole&user=ViewerName
+app.all('/api/hazard', (req, res) => {
+  const hazardType = req.body.type || req.query.type || 'pothole';
+  const username = req.body.user || req.body.username || req.query.user || req.query.username || 'TikFinity';
 
-  currentTikTokUsername = username;
-  gameState.tiktokUser = username;
-
-  tiktokLiveConnection = new WebcastPushConnection(username, {
-    processInitialData: false,
-    enableExtendedGiftInfo: true
+  io.emit('triggerViewerAction', {
+    type: 'queueHazard',
+    hazardType: hazardType,
+    username: username
   });
 
-  tiktokLiveConnection.connect()
-    .then(state => {
-      console.log(`[TikTok] Connected to @${username} (Room: ${state.roomId})`);
-      gameState.tiktokConnected = true;
-      io.emit('tiktokStatus', { connected: true, username: username });
-    })
-    .catch(err => {
-      console.error(`[TikTok] Connection error: ${err.message}`);
-      gameState.tiktokConnected = false;
-      io.emit('tiktokStatus', { connected: false, username: username, error: err.message });
-    });
+  res.json({ success: true, queued: hazardType, user: username });
+});
 
-  tiktokLiveConnection.on('gift', data => {
-    if (data.giftType === 1 && !data.repeatEnd) return;
-
-    const giftName = data.giftName.toLowerCase();
-    const gifter = data.nickname || data.uniqueId;
-
-    let chosenHazard = 'pothole';
-
-    if (giftName.includes('rose') || giftName.includes('heart') || giftName.includes('finger') || 
-        giftName.includes('ice') || giftName.includes('donut') || giftName.includes('panda') || 
-        giftName.includes('coffee') || giftName.includes('gg')) {
-      chosenHazard = 'pothole';
-    } else if (giftName.includes('galaxy') || giftName.includes('lion') || giftName.includes('car') || 
-             giftName.includes('plane') || giftName.includes('dragon') || giftName.includes('whale') || 
-             giftName.includes('fireworks') || giftName.includes('hat') || giftName.includes('cap')) {
-      chosenHazard = 'helicopter';
-    } else {
-      chosenHazard = Math.random() < 0.5 ? 'pothole' : 'helicopter';
-    }
-
-    io.emit('triggerViewerAction', { type: 'queueHazard', hazardType: chosenHazard, username: gifter });
-  });
-
-  tiktokLiveConnection.on('disconnected', () => {
-    gameState.tiktokConnected = false;
-    io.emit('tiktokStatus', { connected: false, username: username });
-  });
-}
-
-if (currentTikTokUsername) {
-  connectToTikTok(currentTikTokUsername);
-}
+// 2. Adjust Score Endpoint (Optional: for likes/follows/gifts to add points)
+// Example: http://localhost:3000/api/score?points=5
+app.all('/api/score', (req, res) => {
+  const delta = parseInt(req.body.points || req.query.points || 5, 10);
+  gameState.score += delta;
+  io.emit('scoreUpdated', { score: gameState.score });
+  checkServerGoal();
+  res.json({ success: true, newScore: gameState.score });
+});
 
 // --- SOCKET.IO CLIENT ROUTING ---
 io.on('connection', (socket) => {
   socket.emit('stateSync', gameState);
-
-  socket.on('setTikTokUser', (username) => {
-    connectToTikTok(username.trim());
-  });
 
   socket.on('adjustScore', (delta) => {
     gameState.score += delta;
@@ -186,7 +144,6 @@ io.on('connection', (socket) => {
     checkServerGoal();
   });
 
-  // Start Next Run (Resets score to 0)
   socket.on('resetAfterWin', () => {
     gameState.score = 0;
     gameState.gameWon = false;
@@ -195,7 +152,6 @@ io.on('connection', (socket) => {
     io.emit('gameResumed', { score: 0 });
   });
 
-  // Continue Run (Keeps current score & updates goal)
   socket.on('continueAfterWin', (newGoal) => {
     const parsed = Number(newGoal);
     if (parsed && parsed > gameState.score) {
@@ -282,5 +238,8 @@ io.on('connection', (socket) => {
 server.listen(PORT, HOST, () => {
   console.log(`========================================================`);
   console.log(`🔒 Game Server running at http://${HOST}:${PORT}`);
+  console.log(`⚡ TikFinity Webhooks active:`);
+  console.log(`   - Hazard: http://localhost:3000/api/hazard?type=pothole&user={username}`);
+  console.log(`   - Points: http://localhost:3000/api/score?points=5`);
   console.log(`========================================================`);
 });
