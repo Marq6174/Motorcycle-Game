@@ -1,0 +1,1962 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Doctor Motorcycle Stream Run</title>
+  <script src="/socket.io/socket.io.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background-color: #12141c;
+      color: #fff;
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      overflow: hidden;
+      user-select: none;
+    }
+    #gameContainer {
+      position: relative;
+      width: 100vw;
+      height: 100vh;
+      background: #87ceeb;
+    }
+    canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+
+    /* Centered Score HUD */
+    #hud {
+      position: absolute;
+      top: 16px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 10;
+      background: rgba(15, 23, 42, 0.88);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      border-radius: 14px;
+      padding: 10px 24px;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+      backdrop-filter: blur(8px);
+      text-align: center;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    .hud-title {
+      font-size: 11px;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: #94a3b8;
+      margin-bottom: 4px;
+      font-weight: 700;
+    }
+    .score-display {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+    }
+    #scoreVal {
+      font-size: 34px;
+      font-weight: 800;
+      color: #38bdf8;
+      line-height: 1;
+    }
+    .goal-divider {
+      font-size: 26px;
+      color: #64748b;
+      font-weight: 600;
+    }
+    .goal-widget {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(15, 23, 42, 0.6);
+      padding: 2px 8px;
+      border-radius: 8px;
+      border: 1px solid rgba(56, 189, 248, 0.25);
+      transition: all 0.2s;
+    }
+    .goal-widget:hover, .goal-widget:focus-within {
+      border-color: #38bdf8;
+      box-shadow: 0 0 10px rgba(56, 189, 248, 0.3);
+    }
+    #hudGoalInput {
+      width: 78px;
+      background: transparent;
+      border: none;
+      color: #f8fafc;
+      font-size: 26px;
+      font-weight: 800;
+      text-align: center;
+      outline: none;
+      font-family: inherit;
+    }
+    #hudGoalInput::-webkit-inner-spin-button,
+    #hudGoalInput::-webkit-outer-spin-button {
+      -webkit-appearance: none;
+      margin: 0;
+    }
+    .goal-suffix {
+      font-size: 14px;
+      color: #94a3b8;
+      font-weight: 700;
+      letter-spacing: 1px;
+    }
+
+    /* Dedicated Standalone TikTok Connection Box (Top-Left) */
+    #tiktokDock {
+      display: none;
+      position: absolute;
+      top: 16px;
+      left: 16px;
+      z-index: 15;
+      background: rgba(15, 23, 42, 0.94);
+      border: 1px solid #334155;
+      border-radius: 12px;
+      padding: 10px 14px;
+      box-shadow: 0 8px 30px rgba(0, 0, 0, 0.45);
+      backdrop-filter: blur(8px);
+      flex-direction: column;
+      gap: 8px;
+    }
+    #tiktokDock.visible { display: flex; }
+    
+    .tiktok-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      font-size: 12px;
+    }
+    .tiktok-title {
+      font-weight: 800;
+      color: #f43f5e;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      letter-spacing: 0.5px;
+    }
+    .tiktok-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    #tiktokInput {
+      background: #0f172a;
+      border: 1px solid #475569;
+      color: #fff;
+      padding: 6px 10px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 600;
+      width: 130px;
+      outline: none;
+    }
+    #tiktokInput:focus {
+      border-color: #38bdf8;
+    }
+    #tiktokStatusBadge {
+      padding: 2px 8px;
+      border-radius: 10px;
+      font-weight: 800;
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .status-connected { background: rgba(34, 197, 94, 0.2); color: #4ade80; border: 1px solid #22c55e; }
+    .status-disconnected { background: rgba(239, 68, 68, 0.2); color: #f87171; border: 1px solid #ef4444; }
+
+    /* Modals */
+    .game-modal {
+      display: none;
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: rgba(15, 23, 42, 0.96);
+      padding: 36px 56px;
+      border-radius: 20px;
+      text-align: center;
+      z-index: 60;
+      animation: popIn 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    }
+    @keyframes popIn {
+      from { transform: translate(-50%, -50%) scale(0.85); opacity: 0; }
+      to { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+    }
+
+    #saved-modal {
+      border: 3px solid #0ea5e9;
+      background: radial-gradient(circle at center, rgba(14, 165, 233, 0.22), rgba(15, 23, 42, 0.98));
+      box-shadow: 0 0 60px rgba(14, 165, 233, 0.75), 0 0 25px rgba(56, 189, 248, 0.5);
+      animation: savePopIn 0.35s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    }
+    @keyframes savePopIn {
+      0% { transform: translate(-50%, -50%) scale(0.7); opacity: 0; }
+      70% { transform: translate(-50%, -50%) scale(1.06); opacity: 1; }
+      100% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+    }
+    #saved-icon {
+      font-size: 52px;
+      margin-bottom: 8px;
+      animation: floatSave 0.9s infinite alternate ease-in-out;
+    }
+    @keyframes floatSave {
+      from { transform: translateY(0) scale(1); }
+      to { transform: translateY(-7px) scale(1.08); }
+    }
+    #saved-title {
+      font-size: 42px;
+      font-weight: 900;
+      color: #38bdf8;
+      text-shadow: 0 0 25px rgba(56, 189, 248, 0.85), 0 0 10px #ffffff;
+      letter-spacing: 2px;
+    }
+
+    #manual-pause-modal {
+      border: 3px solid #38bdf8;
+      box-shadow: 0 0 50px rgba(56, 189, 248, 0.5);
+    }
+    #manual-pause-title {
+      font-size: 36px;
+      font-weight: 900;
+      color: #38bdf8;
+      letter-spacing: 2px;
+    }
+
+    #countdown-modal {
+      border: 3px solid #f43f5e;
+      box-shadow: 0 0 50px rgba(244, 63, 94, 0.5);
+    }
+    #countdown-seconds {
+      font-size: 72px;
+      font-weight: 900;
+      color: #f43f5e;
+      margin: 12px 0 0 0;
+      line-height: 1;
+    }
+
+    #reset-complete-modal {
+      border: 3px solid #f59e0b;
+      box-shadow: 0 0 60px rgba(245, 158, 11, 0.6);
+    }
+    #reset-complete-title {
+      font-size: 36px;
+      font-weight: 900;
+      color: #fbbf24;
+      text-shadow: 0 0 20px rgba(251, 191, 36, 0.5);
+      letter-spacing: 1px;
+    }
+
+    #win-modal {
+      border: 4px solid #22c55e;
+      background: radial-gradient(circle at top, rgba(16, 185, 129, 0.25), rgba(15, 23, 42, 0.98));
+      box-shadow: 0 0 80px rgba(34, 197, 94, 0.75), 0 0 30px rgba(251, 191, 36, 0.5);
+    }
+    #win-title {
+      font-size: 46px;
+      font-weight: 900;
+      color: #4ade80;
+      text-shadow: 0 0 25px rgba(74, 222, 128, 0.8), 0 0 10px #ffffff;
+      letter-spacing: 2px;
+      animation: pulseWin 1.2s infinite alternate;
+    }
+    @keyframes pulseWin {
+      from { transform: scale(1); }
+      to { transform: scale(1.04); }
+    }
+    #win-badge {
+      display: inline-block;
+      background: linear-gradient(135deg, #f59e0b, #ec4899);
+      color: #ffffff;
+      padding: 4px 16px;
+      border-radius: 20px;
+      font-weight: 800;
+      font-size: 13px;
+      letter-spacing: 1px;
+      margin-top: 6px;
+      margin-bottom: 12px;
+      text-transform: uppercase;
+      box-shadow: 0 0 15px rgba(236, 72, 153, 0.6);
+    }
+
+    #lose-modal {
+      border: 3px solid #ef4444;
+      box-shadow: 0 0 60px rgba(239, 68, 68, 0.6);
+    }
+    #lose-title {
+      font-size: 38px;
+      font-weight: 900;
+      color: #f87171;
+      text-shadow: 0 0 20px rgba(239, 68, 68, 0.5);
+      letter-spacing: 1px;
+    }
+    .modal-subtitle {
+      color: #e2e8f0;
+      font-size: 16px;
+      margin: 10px 0 20px 0;
+    }
+
+    /* Host Controls Dock (Bottom-Center) */
+    #dock {
+      display: none;
+      position: absolute;
+      bottom: 12px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 10;
+      background: rgba(15, 23, 42, 0.95);
+      border: 1px solid #334155;
+      border-radius: 12px;
+      padding: 8px 16px;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+      max-width: 95vw;
+      overflow-x: auto;
+    }
+    #dock.visible { display: flex; }
+
+    .btn {
+      background: #1e293b;
+      color: #f8fafc;
+      border: 1px solid #475569;
+      padding: 6px 12px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.15s;
+      white-space: nowrap;
+    }
+    .btn:hover { background: #334155; border-color: #64748b; }
+    .btn-primary { background: #0284c7; border-color: #38bdf8; }
+    .btn-primary:hover { background: #0369a1; }
+    .btn-danger { background: #be123c; border-color: #e11d48; }
+    .btn-danger:hover { background: #9f1239; }
+    .btn-success { background: #047857; border-color: #059669; }
+    .btn-success:hover { background: #065f46; }
+
+    input[type="number"].dock-input {
+      background: #0f172a;
+      border: 1px solid #475569;
+      color: #fff;
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-weight: bold;
+    }
+  </style>
+</head>
+<body>
+
+  <div id="gameContainer">
+    <!-- Top-Center HUD -->
+    <div id="hud">
+      <div class="hud-title">Emergency Delivery Run</div>
+      <div class="score-display">
+        <span id="scoreVal">0</span>
+        <span class="goal-divider">/</span>
+        <div class="goal-widget" title="Click to edit delivery goal">
+          <input type="number" id="hudGoalInput" value="250" step="50" min="10" />
+          <span class="goal-suffix">PTS</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- SEPARATE TIKTOK LIVE CONNECTION PANEL (Top-Left) -->
+    <div id="tiktokDock">
+      <div class="tiktok-header">
+        <span class="tiktok-title"><span>📱</span> TikTok Stream</span>
+        <span id="tiktokStatusBadge" class="status-disconnected">Offline</span>
+      </div>
+      <div class="tiktok-row">
+        <input type="text" id="tiktokInput" placeholder="@username" />
+        <button class="btn btn-primary" onclick="connectTikTok()">Connect</button>
+      </div>
+    </div>
+
+    <!-- Animated "SAVED" Modal -->
+    <div id="saved-modal" class="game-modal">
+      <div id="saved-icon">💾</div>
+      <div id="saved-title">SAVED!</div>
+      <div class="modal-subtitle">Score preserved & delivery resumed!</div>
+    </div>
+
+    <div id="manual-pause-modal" class="game-modal">
+      <div id="manual-pause-title">GAME PAUSED</div>
+      <div class="modal-subtitle" style="margin-bottom: 0;">Press <b>[P]</b> or click Resume to continue</div>
+    </div>
+
+    <div id="countdown-modal" class="game-modal">
+      <h2 style="color: #f8fafc; font-size: 26px; font-weight: 800; letter-spacing: 1px;">RESET PENDING</h2>
+      <div id="countdown-seconds">60</div>
+    </div>
+
+    <div id="reset-complete-modal" class="game-modal">
+      <div id="reset-complete-title">GAME HAS BEEN RESET</div>
+      <div class="modal-subtitle">Score has been reset to 0.</div>
+      <button class="btn btn-success" style="padding: 10px 24px; font-size: 14px;" onclick="resumeAfterResetNotification()">Continue (<span id="reset-done-timer">4</span>s)</button>
+    </div>
+
+    <div id="win-modal" class="game-modal">
+      <div id="win-title">PATIENT SAVED!</div>
+      <div id="win-badge">★ Mission Accomplished ★</div>
+      <div class="modal-subtitle">Emergency medical delivery arrived in time! The patient has been saved.</div>
+      <button class="btn btn-success" style="padding: 12px 28px; font-size: 15px; font-weight: 800; background: linear-gradient(135deg, #10b981, #059669); border: none; box-shadow: 0 0 20px rgba(16, 185, 129, 0.6);" onclick="resetGameAfterWin()">Start Next Run (<span id="win-timer">5</span>s)</button>
+    </div>
+
+    <div id="lose-modal" class="game-modal">
+      <div id="lose-title">GAME OVER</div>
+      <div id="lose-reason" class="modal-subtitle">You hit an obstacle!</div>
+      <button class="btn btn-danger" style="padding: 10px 24px; font-size: 14px;" onclick="resetGameAfterLoss()">Restarting (<span id="lose-timer">5</span>s)</button>
+    </div>
+
+    <!-- SEPARATE HOST CONTROL DOCK (Bottom-Center) -->
+    <div id="dock">
+      <button id="pauseBtn" class="btn btn-primary" onclick="toggleManualPause()">Pause [P]</button>
+      <button class="btn btn-success" onclick="triggerHostKey('w')">Win [W]</button>
+      <button class="btn btn-danger" onclick="triggerHostKey('l')">Crash Reset [L]</button>
+      <button class="btn btn-danger" onclick="triggerHostKey('r')">Reset 60s [R]</button>
+      <button class="btn btn-success" onclick="triggerHostKey('s')">Save [S]</button>
+      <div style="width: 1px; height: 20px; background: #334155;"></div>
+      <span style="color:#94a3b8; font-weight:600;">Goal:</span>
+      <input type="number" id="goalInput" class="dock-input" value="250" step="50" min="10" style="width:65px;" />
+      <button class="btn" onclick="updateGoalFromDock()">Set</button>
+      <div style="width: 1px; height: 20px; background: #334155;"></div>
+      <button class="btn btn-success" onclick="triggerHostKey('f')">+5 [F]</button>
+      <button class="btn" onclick="triggerHostKey('u')">+100 [U]</button>
+      <button class="btn" onclick="triggerHostKey('v')">+1000 [V]</button>
+      <button class="btn" onclick="triggerHostKey('d')">-100 [D]</button>
+      <button class="btn" onclick="triggerHostKey('g')">-1000 [G]</button>
+      <div style="width: 1px; height: 20px; background: #334155;"></div>
+      <button class="btn" onclick="spawnHostHazard('pothole')">Pothole [B]</button>
+      <button class="btn" onclick="spawnHostHazard('helicopter')">Heli [H]</button>
+    </div>
+
+    <canvas id="gameCanvas"></canvas>
+  </div>
+
+  <script>
+    const ROAD_Y_OFFSET = 180;
+    const GRAVITY = 0.55;
+    const JUMP_FORCE = -16.5;
+    const baseSpeed = 9.6;
+    const MIN_HAZARD_SPACING = 540;
+    const MAX_PARTICLES = 30;
+
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+
+    const scoreValEl = document.getElementById('scoreVal');
+    const hudGoalInput = document.getElementById('hudGoalInput');
+    const goalInput = document.getElementById('goalInput');
+    const tiktokDock = document.getElementById('tiktokDock');
+    const tiktokInput = document.getElementById('tiktokInput');
+    const tiktokStatusBadge = document.getElementById('tiktokStatusBadge');
+    const savedModal = document.getElementById('saved-modal');
+    const manualPauseModal = document.getElementById('manual-pause-modal');
+    const pauseBtn = document.getElementById('pauseBtn');
+    const countdownModal = document.getElementById('countdown-modal');
+    const countdownSecondsEl = document.getElementById('countdown-seconds');
+    const resetCompleteModal = document.getElementById('reset-complete-modal');
+    const resetDoneTimerEl = document.getElementById('reset-done-timer');
+    const winModal = document.getElementById('win-modal');
+    const winTimerEl = document.getElementById('win-timer');
+    const loseModal = document.getElementById('lose-modal');
+    const loseReasonEl = document.getElementById('lose-reason');
+    const loseTimerEl = document.getElementById('lose-timer');
+    const dockEl = document.getElementById('dock');
+
+    const urlParams = new URLSearchParams(window.location.search);
+    
+    if (urlParams.has('connect') || urlParams.has('streamer') || urlParams.has('host') || urlParams.has('admin')) {
+      tiktokDock.classList.add('visible');
+    }
+    if (urlParams.has('host') || urlParams.has('admin')) {
+      dockEl.classList.add('visible');
+    }
+
+    function getGroundY() {
+      return canvas.height - ROAD_Y_OFFSET + 70;
+    }
+
+    let cachedSkyGrad = null;
+    let cachedBeamGrad = null;
+    let cachedBeamHeight = 0;
+
+    function resizeCanvas() {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+
+      cachedSkyGrad = ctx.createLinearGradient(0, 0, 0, canvas.height - ROAD_Y_OFFSET);
+      cachedSkyGrad.addColorStop(0, '#38bdf8');
+      cachedSkyGrad.addColorStop(0.65, '#bae6fd');
+      cachedSkyGrad.addColorStop(1, '#f0fdf4');
+
+      cachedBeamGrad = null;
+    }
+    window.addEventListener('resize', resizeCanvas);
+    resizeCanvas();
+
+    let score = 0;
+    let goalScore = 250;
+    let isPaused = false;
+    let isManualPaused = false;
+    let isEndingSequence = false;
+    let isWonState = false;
+    let sequenceCountdownInterval = null;
+
+    let lightsPassedCounter = 0;
+
+    let rescueVehicle = null;
+    const confettiList = [];
+
+    let screenShake = 0;
+
+    let isCrashActive = false;
+    let crashStartTime = 0;
+    let crashDuration = 2200;
+    let hasTriggeredSparks = false;
+
+    let crashCar = {
+      x: 0,
+      y: 0,
+      width: 170,
+      height: 60,
+      wheelRotation: 0
+    };
+
+    const player = {
+      x: 160,
+      y: getGroundY() - 90,
+      width: 120,
+      height: 90,
+      vy: 0,
+      rotation: 0,
+      isGrounded: true,
+      isDucking: false,
+      wheelRotation: 0,
+      duckTimer: 0,
+      manualSuppressionTimer: 0
+    };
+
+    let scrollX = 0;
+
+    const trafficLights = [];
+    const obstacles = [];
+    const hazardQueue = [];
+    const particles = [];
+
+    let nextTrafficLightDist = 340;
+
+    const socket = io();
+
+    socket.on('stateSync', (state) => {
+      score = state.score;
+      goalScore = state.goalScore;
+      isPaused = state.isPaused;
+      isManualPaused = state.isManualPaused || false;
+      scoreValEl.textContent = score;
+
+      if (document.activeElement !== hudGoalInput) hudGoalInput.value = goalScore;
+      if (document.activeElement !== goalInput) goalInput.value = goalScore;
+
+      if (state.tiktokUser && document.activeElement !== tiktokInput) {
+        tiktokInput.value = state.tiktokUser;
+      }
+      updateTikTokBadge(state.tiktokConnected, state.tiktokUser);
+
+      updatePauseUI();
+      render();
+    });
+
+    socket.on('tiktokStatus', (data) => {
+      updateTikTokBadge(data.connected, data.username);
+    });
+
+    function updateTikTokBadge(connected, username) {
+      if (connected) {
+        tiktokStatusBadge.textContent = 'Live: @' + (username || '');
+        tiktokStatusBadge.className = 'status-connected';
+      } else {
+        tiktokStatusBadge.textContent = 'Offline';
+        tiktokStatusBadge.className = 'status-disconnected';
+      }
+    }
+
+    function connectTikTok() {
+      const u = tiktokInput.value.replace('@', '').trim();
+      if (u) {
+        socket.emit('setTikTokUser', u);
+        tiktokStatusBadge.textContent = 'Connecting...';
+        tiktokStatusBadge.className = 'status-disconnected';
+      }
+    }
+
+    tiktokInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        connectTikTok();
+        tiktokInput.blur();
+      }
+    });
+
+    socket.on('scoreUpdated', (data) => {
+      score = data.score;
+      scoreValEl.textContent = score;
+    });
+
+    socket.on('goalUpdated', (data) => {
+      goalScore = data.goalScore;
+      if (document.activeElement !== hudGoalInput) hudGoalInput.value = goalScore;
+      if (document.activeElement !== goalInput) goalInput.value = goalScore;
+    });
+
+    socket.on('manualPauseToggled', (data) => {
+      isPaused = data.isPaused;
+      isManualPaused = data.isManualPaused;
+      updatePauseUI();
+      render();
+    });
+
+    socket.on('resetCountdownStarted', (data) => {
+      isPaused = true;
+      manualPauseModal.style.display = 'none';
+      savedModal.style.display = 'none';
+      countdownModal.style.display = 'block';
+      countdownSecondsEl.textContent = data.timeRemaining;
+    });
+
+    socket.on('resetCountdownTick', (data) => {
+      countdownSecondsEl.textContent = data.timeRemaining;
+    });
+
+    socket.on('saveConfirmed', (data) => {
+      isPaused = true;
+      countdownModal.style.display = 'none';
+      manualPauseModal.style.display = 'none';
+      savedModal.style.display = 'block';
+      score = data.score;
+      scoreValEl.textContent = score;
+      render();
+    });
+
+    socket.on('startResetCrashAnimation', (data) => {
+      countdownModal.style.display = 'none';
+      manualPauseModal.style.display = 'none';
+      savedModal.style.display = 'none';
+      winModal.style.display = 'none';
+      isWonState = false;
+      isEndingSequence = false;
+
+      isCrashActive = true;
+      crashStartTime = data.startTime || Date.now();
+      crashDuration = data.duration || 2200;
+      hasTriggeredSparks = false;
+      render();
+    });
+
+    socket.on('resetCompleteNotification', (data) => {
+      isCrashActive = false;
+      resetCompleteModal.style.display = 'block';
+      score = 0;
+      scoreValEl.textContent = '0';
+
+      let resetTimer = data.duration || 4;
+      resetDoneTimerEl.textContent = resetTimer;
+
+      clearInterval(sequenceCountdownInterval);
+      sequenceCountdownInterval = setInterval(() => {
+        resetTimer--;
+        resetDoneTimerEl.textContent = resetTimer;
+        if (resetTimer <= 0) {
+          clearInterval(sequenceCountdownInterval);
+        }
+      }, 1000);
+      render();
+    });
+
+    socket.on('gameWonSequence', (data) => {
+      isPaused = true;
+      isEndingSequence = true;
+      isWonState = true;
+      lightsPassedCounter = 0;
+
+      countdownModal.style.display = 'none';
+      manualPauseModal.style.display = 'none';
+      savedModal.style.display = 'none';
+
+      obstacles.length = 0;
+      hazardQueue.length = 0;
+      trafficLights.length = 0;
+      particles.length = 0;
+
+      player.vy = 0;
+      player.y = getGroundY() - player.height;
+      player.isGrounded = true;
+      player.isDucking = false;
+      player.rotation = 0;
+
+      rescueVehicle = {
+        x: player.x + player.width + 12,
+        y: getGroundY() - 88,
+        width: 180,
+        height: 88,
+        lightAngle: 0
+      };
+
+      triggerConfettiExplosion();
+      winModal.style.display = 'block';
+
+      let winSeconds = 5;
+      winTimerEl.textContent = winSeconds;
+
+      clearInterval(sequenceCountdownInterval);
+      sequenceCountdownInterval = setInterval(() => {
+        winSeconds--;
+        winTimerEl.textContent = winSeconds;
+        if (winSeconds <= 0) {
+          clearInterval(sequenceCountdownInterval);
+          resetGameAfterWin();
+        }
+      }, 1000);
+
+      render();
+    });
+
+    function triggerConfettiExplosion() {
+      const colors = ['#ff2a85', '#38bdf8', '#4ade80', '#fbbf24', '#a855f7', '#ffffff', '#f43f5e'];
+      for (let i = 0; i < 180; i++) {
+        confettiList.push({
+          x: Math.random() * canvas.width,
+          y: -20 - Math.random() * 150,
+          vx: (Math.random() - 0.5) * 6,
+          vy: Math.random() * 4 + 3,
+          size: Math.random() * 8 + 6,
+          color: colors[Math.floor(Math.random() * colors.length)],
+          rotation: Math.random() * Math.PI * 2,
+          rotSpeed: (Math.random() - 0.5) * 0.15,
+          oscillation: Math.random() * 20
+        });
+      }
+    }
+
+    socket.on('gameResumed', (data) => {
+      clearInterval(sequenceCountdownInterval);
+      resetCompleteModal.style.display = 'none';
+      countdownModal.style.display = 'none';
+      manualPauseModal.style.display = 'none';
+      savedModal.style.display = 'none';
+      winModal.style.display = 'none';
+      loseModal.style.display = 'none';
+
+      isPaused = false;
+      isManualPaused = false;
+      isCrashActive = false;
+      isEndingSequence = false;
+      isWonState = false;
+      rescueVehicle = null;
+      confettiList.length = 0;
+      lightsPassedCounter = 0;
+      updatePauseUI();
+
+      obstacles.length = 0;
+      hazardQueue.length = 0;
+      particles.length = 0;
+
+      player.x = 160;
+      player.y = getGroundY() - player.height;
+      player.vy = 0;
+      player.rotation = 0;
+      player.isGrounded = true;
+      player.isDucking = false;
+
+      score = data.score;
+      scoreValEl.textContent = score;
+      render();
+    });
+
+    socket.on('triggerViewerAction', (evt) => {
+      if (evt.type === 'queueHazard') {
+        queueHazard(evt.hazardType, evt.username);
+      }
+    });
+
+    function toggleManualPause() {
+      socket.emit('toggleManualPause');
+    }
+
+    function updatePauseUI() {
+      if (isManualPaused) {
+        manualPauseModal.style.display = 'block';
+        if (pauseBtn) {
+          pauseBtn.textContent = 'Resume [P]';
+          pauseBtn.className = 'btn btn-success';
+        }
+      } else {
+        manualPauseModal.style.display = 'none';
+        if (pauseBtn) {
+          pauseBtn.textContent = 'Pause [P]';
+          pauseBtn.className = 'btn btn-primary';
+        }
+      }
+    }
+
+    // Instantly stand up and jump (ducking will never lock the jump)
+    function executeJump() {
+      if (player.isGrounded && !isEndingSequence && !isPaused && !isCrashActive) {
+        player.isDucking = false;
+        player.duckTimer = 0;
+        player.vy = JUMP_FORCE;
+        player.isGrounded = false;
+        createDust(player.x + 30, getGroundY());
+      }
+    }
+
+    // Shorter, snappier duck duration (34 frames) so she stands back up promptly
+    function executeDuck() {
+      if (player.isGrounded && !isEndingSequence && !isPaused && !isCrashActive) {
+        player.isDucking = true;
+        player.duckTimer = 34;
+      }
+    }
+
+    function commitHudGoal() {
+      const g = parseInt(hudGoalInput.value, 10);
+      if (!isNaN(g) && g > 0) {
+        socket.emit('setGoal', g);
+      } else {
+        hudGoalInput.value = goalScore;
+      }
+    }
+
+    hudGoalInput.addEventListener('change', commitHudGoal);
+    hudGoalInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        commitHudGoal();
+        hudGoalInput.blur();
+      }
+    });
+
+    function updateGoalFromDock() {
+      const g = parseInt(goalInput.value, 10);
+      if (!isNaN(g) && g > 0) {
+        socket.emit('setGoal', g);
+      }
+    }
+
+    goalInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        updateGoalFromDock();
+        goalInput.blur();
+      }
+    });
+
+    function spawnHostHazard(type) {
+      socket.emit('spawnHazard', { hazardType: type, username: 'Host' });
+    }
+
+    // --- KEYBOARD CONTROLS (INSTANT TAKEOVER) ---
+    window.addEventListener('keydown', (e) => {
+      const key = e.key.toLowerCase();
+      const isInputFocused = document.activeElement && (document.activeElement.tagName === 'INPUT');
+
+      if (key === 't' && !isInputFocused) {
+        tiktokDock.classList.toggle('visible');
+      }
+
+      if (key === 'm' && !isInputFocused) {
+        dockEl.classList.toggle('visible');
+      }
+
+      if (isInputFocused) return;
+
+      if (key === 'w') socket.emit('forceWin');
+      if (key === 'l') socket.emit('forceResetCrash');
+      if (key === 'h') spawnHostHazard('helicopter');
+      if (key === 'b') spawnHostHazard('pothole');
+      if (key === 'f') socket.emit('adjustScore', 5);
+
+      if (key === 'u') socket.emit('adjustScore', 100);
+      if (key === 'v') socket.emit('adjustScore', 1000);
+      if (key === 'd') socket.emit('adjustScore', -100);
+      if (key === 'g') socket.emit('adjustScore', -1000);
+
+      if (key === 'p') toggleManualPause();
+      if (key === 'r') socket.emit('initiateResetCountdown');
+      if (key === 's') socket.emit('saveAndResume');
+
+      // Manual Jump: sets a tiny 8-frame tap timer instead of 50
+      if (e.key === 'ArrowUp' || e.code === 'Space') {
+        player.manualSuppressionTimer = 8;
+        executeJump();
+      }
+
+      // Manual Duck: sets a tiny 8-frame tap timer
+      if (e.key === 'ArrowDown') {
+        player.manualSuppressionTimer = 8;
+        executeDuck();
+      }
+    });
+
+    // Zero-delay release: auto-play reactivates instantly on key release
+    window.addEventListener('keyup', (e) => {
+      const key = e.key.toLowerCase();
+      if (e.key === 'ArrowDown') {
+        player.isDucking = false;
+        player.duckTimer = 0;
+        player.manualSuppressionTimer = 0;
+      }
+      if (e.key === 'ArrowUp' || e.code === 'Space') {
+        player.manualSuppressionTimer = 0;
+      }
+    });
+
+    function triggerHostKey(k) {
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: k }));
+    }
+
+    function resetGameAfterWin() {
+      clearInterval(sequenceCountdownInterval);
+      winModal.style.display = 'none';
+      isWonState = false;
+      rescueVehicle = null;
+      confettiList.length = 0;
+      lightsPassedCounter = 0;
+      socket.emit('resetAfterWin');
+    }
+
+    function resumeAfterResetNotification() {
+      socket.emit('saveAndResume');
+    }
+
+    function queueHazard(type, username) {
+      hazardQueue.push({ type: type, author: username });
+    }
+
+    function spawnQueuedHazard(type, author) {
+      if (isEndingSequence || isPaused) return;
+      if (type === 'pothole') {
+        obstacles.push({
+          type: 'pothole',
+          x: canvas.width + 60,
+          y: getGroundY() + 6,
+          width: 95,
+          height: 28,
+          author: author,
+          passed: false
+        });
+      } else {
+        obstacles.push({
+          type: 'helicopter',
+          x: canvas.width + 100,
+          y: 110,
+          width: 140,
+          height: 60,
+          rotorAngle: 0,
+          author: author,
+          passed: false
+        });
+      }
+    }
+
+    function spawnTrafficLight() {
+      if (isEndingSequence || isPaused) return;
+      trafficLights.push({
+        x: canvas.width + 50,
+        y: getGroundY() - 110,
+        width: 24,
+        height: 110,
+        passed: false
+      });
+    }
+
+    function triggerGameOverLoss(reason) {
+      if (isEndingSequence || isCrashActive) return;
+      isEndingSequence = true;
+      isPaused = true;
+      lightsPassedCounter = 0;
+
+      loseReasonEl.textContent = reason === 'pothole'
+        ? "Crashed into a road pothole hazard!"
+        : "Caught in the police helicopter searchlight!";
+      
+      loseModal.style.display = 'block';
+
+      let loseSeconds = 5;
+      loseTimerEl.textContent = loseSeconds;
+
+      clearInterval(sequenceCountdownInterval);
+      sequenceCountdownInterval = setInterval(() => {
+        loseSeconds--;
+        loseTimerEl.textContent = loseSeconds;
+        if (loseSeconds <= 0) {
+          clearInterval(sequenceCountdownInterval);
+          resetGameAfterLoss();
+        }
+      }, 1000);
+    }
+
+    function resetGameAfterLoss() {
+      clearInterval(sequenceCountdownInterval);
+      loseModal.style.display = 'none';
+      isEndingSequence = false;
+      isPaused = false;
+      isManualPaused = false;
+      updatePauseUI();
+      obstacles.length = 0;
+      hazardQueue.length = 0;
+      particles.length = 0;
+      lightsPassedCounter = 0;
+      player.x = 160;
+      player.vy = 0;
+      player.rotation = 0;
+      player.y = getGroundY() - player.height;
+      player.isGrounded = true;
+      player.isDucking = false;
+
+      socket.emit('adjustScore', -score);
+    }
+
+    function createDust(x, y) {
+      if (particles.length >= MAX_PARTICLES) return;
+      for (let i = 0; i < 4; i++) {
+        particles.push({
+          x: x,
+          y: y,
+          vx: -(Math.random() * 5 + 4),
+          vy: -(Math.random() * 1.5),
+          size: Math.random() * 5 + 3,
+          color: 'rgba(203, 213, 225, 0.7)',
+          alpha: 0.7
+        });
+      }
+    }
+
+    function createSparks(x, y) {
+      for (let i = 0; i < 8; i++) {
+        particles.push({
+          x: x,
+          y: y,
+          vx: -(Math.random() * 9 + 5),
+          vy: (Math.random() - 0.5) * 6,
+          size: Math.random() * 3 + 2,
+          color: '#fbbf24',
+          alpha: 1.0
+        });
+      }
+    }
+
+    // --- REFINED & RESPONSIVE AUTO-ASSISTANCE ---
+    function handleBackgroundAssistance() {
+      if (isCrashActive || isEndingSequence) return;
+
+      for (let i = 0; i < obstacles.length; i++) {
+        const obs = obstacles[i];
+        const dist = obs.x - (player.x + player.width);
+
+        // Pothole auto-jump
+        if (obs.type === 'pothole') {
+          // Lookahead up to 230px, with emergency override within 180px
+          if (dist > 0 && dist < 230 && player.isGrounded) {
+            if (player.manualSuppressionTimer <= 0 || dist < 180) {
+              executeJump();
+            }
+          }
+        }
+        // Helicopter auto-duck
+        else if (obs.type === 'helicopter') {
+          // Lookahead up to 210px, with emergency override within 160px
+          if (dist > 0 && dist < 210 && player.isGrounded) {
+            if (player.manualSuppressionTimer <= 0 || dist < 160) {
+              executeDuck();
+            }
+          }
+        }
+      }
+    }
+
+    function drawBackground() {
+      const h = canvas.height;
+      const w = canvas.width;
+
+      ctx.fillStyle = cachedSkyGrad || '#87ceeb';
+      ctx.fillRect(0, 0, w, h);
+
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
+      for (let i = 0; i < 5; i++) {
+        let cx = ((i * 380) - (scrollX * 0.15)) % (w + 200);
+        if (cx < -150) cx += w + 200;
+        let cy = 60 + (i % 3) * 35;
+        drawCloud(cx, cy, 48);
+      }
+
+      ctx.fillStyle = '#64748b';
+      ctx.beginPath();
+      ctx.moveTo(0, h - ROAD_Y_OFFSET);
+      for (let x = 0; x <= w + 80; x += 80) {
+        let my = Math.sin((x + scrollX * 0.25) * 0.005) * 55 + (h - ROAD_Y_OFFSET - 80);
+        ctx.lineTo(x, my);
+      }
+      ctx.lineTo(w, h);
+      ctx.lineTo(0, h);
+      ctx.fill();
+
+      ctx.fillStyle = '#4ade80';
+      ctx.beginPath();
+      ctx.moveTo(0, h - ROAD_Y_OFFSET);
+      for (let x = 0; x <= w + 60; x += 60) {
+        let hy = Math.sin((x + scrollX * 0.6) * 0.008) * 26 + (h - ROAD_Y_OFFSET - 25);
+        ctx.lineTo(x, hy);
+      }
+      ctx.lineTo(w, h);
+      ctx.lineTo(0, h);
+      ctx.fill();
+
+      const roadTop = h - ROAD_Y_OFFSET;
+      ctx.fillStyle = '#334155';
+      ctx.fillRect(0, roadTop, w, ROAD_Y_OFFSET);
+
+      ctx.strokeStyle = '#e2e8f0';
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.moveTo(0, roadTop + 15);
+      ctx.lineTo(w, roadTop + 15);
+      ctx.stroke();
+
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 6;
+      ctx.setLineDash([40, 35]);
+      ctx.lineDashOffset = scrollX;
+      ctx.beginPath();
+      ctx.moveTo(0, roadTop + 75);
+      ctx.lineTo(w, roadTop + 75);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+
+    function drawCloud(x, y, rad) {
+      ctx.beginPath();
+      ctx.arc(x, y, rad * 0.6, 0, Math.PI * 2);
+      ctx.arc(x + rad * 0.5, y - rad * 0.2, rad * 0.5, 0, Math.PI * 2);
+      ctx.arc(x + rad, y, rad * 0.5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    function drawDoctorPlayer() {
+      ctx.save();
+      ctx.translate(player.x, player.y);
+      if (player.rotation !== 0) {
+        ctx.rotate(player.rotation);
+      }
+
+      let duckOffset = player.isDucking ? 22 : 0;
+      const bounce = player.isGrounded && !isPaused && !isCrashActive ? Math.sin(Date.now() * 0.045) * 1.5 : 0;
+      ctx.translate(0, bounce);
+
+      drawWheel(22, 68, player.wheelRotation);
+      drawWheel(96, 68, player.wheelRotation);
+
+      ctx.fillStyle = '#dc2626';
+      ctx.beginPath();
+      ctx.moveTo(18, 62);
+      ctx.lineTo(52, 62);
+      ctx.lineTo(70, 48);
+      ctx.lineTo(95, 48);
+      ctx.lineTo(98, 62);
+      ctx.lineTo(76, 68);
+      ctx.lineTo(40, 68);
+      ctx.closePath();
+      ctx.fill();
+
+      ctx.beginPath();
+      ctx.moveTo(85, 52);
+      ctx.lineTo(95, 24);
+      ctx.lineTo(105, 24);
+      ctx.lineTo(96, 56);
+      ctx.closePath();
+      ctx.fill();
+
+      ctx.fillStyle = '#fef08a';
+      ctx.beginPath();
+      ctx.arc(102, 27, 5, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.fillStyle = '#b91c1c';
+      ctx.fillRect(4, 30, 26, 26);
+      ctx.strokeStyle = '#fff';
+      ctx.lineWidth = 1.5;
+      ctx.strokeRect(4, 30, 26, 26);
+
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(14, 34, 6, 18);
+      ctx.fillRect(8, 40, 18, 6);
+
+      ctx.save();
+      ctx.translate(0, duckOffset);
+
+      ctx.fillStyle = '#0284c7';
+      ctx.lineWidth = 6;
+      ctx.strokeStyle = '#0284c7';
+      ctx.beginPath();
+      ctx.moveTo(50, 46);
+      ctx.lineTo(65, 54);
+      ctx.lineTo(72, 66);
+      ctx.stroke();
+
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath();
+      ctx.moveTo(42, 46);
+      ctx.lineTo(68, 30);
+      ctx.lineTo(76, 46);
+      ctx.lineTo(46, 56);
+      ctx.closePath();
+      ctx.fill();
+
+      ctx.strokeStyle = '#0284c7';
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.arc(66, 32, 6, 0, Math.PI);
+      ctx.stroke();
+
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 5;
+      ctx.beginPath();
+      ctx.moveTo(60, 32);
+      ctx.lineTo(84, 36);
+      ctx.stroke();
+
+      // Helmet
+      ctx.save();
+      ctx.translate(68, 16);
+
+      ctx.fillStyle = '#0f131a';
+      ctx.beginPath();
+      ctx.moveTo(11, -5);
+      ctx.bezierCurveTo(9, -15, -7, -15, -13, -9);
+      ctx.lineTo(-18, -4);
+      ctx.lineTo(-16, 3);
+      ctx.bezierCurveTo(-14, 11, -10, 14, -3, 14);
+      ctx.lineTo(8, 12);
+      ctx.lineTo(13, 6);
+      ctx.lineTo(11, -1);
+      ctx.closePath();
+      ctx.fill();
+
+      ctx.fillStyle = '#1e2430';
+      ctx.fillRect(-7, -15.5, 7, 2.5);
+
+      ctx.fillStyle = '#ff1f7d';
+      ctx.beginPath();
+      ctx.moveTo(-11, -8);
+      ctx.lineTo(-6, -11);
+      ctx.lineTo(3, -6.5);
+      ctx.lineTo(-1, -3.5);
+      ctx.lineTo(-5.5, -7.5);
+      ctx.lineTo(-9, -5.5);
+      ctx.closePath();
+      ctx.fill();
+
+      ctx.beginPath();
+      ctx.moveTo(-14, -6);
+      ctx.lineTo(-18, -4);
+      ctx.lineTo(-15, 1);
+      ctx.lineTo(-12, 0);
+      ctx.closePath();
+      ctx.fill();
+
+      ctx.beginPath();
+      ctx.moveTo(-12, 5);
+      ctx.lineTo(-6, 2.5);
+      ctx.lineTo(4, 5.5);
+      ctx.lineTo(6.5, 5.5);
+      ctx.lineTo(4.5, 8);
+      ctx.lineTo(-5, 5.5);
+      ctx.lineTo(-10, 9.5);
+      ctx.closePath();
+      ctx.fill();
+
+      for (let s = 0; s < 4; s++) {
+        ctx.fillRect(4.5 + s * 2.2, 6.8, 1.4, 4);
+      }
+
+      ctx.fillStyle = '#080a0f';
+      ctx.beginPath();
+      ctx.moveTo(1.5, -7.5);
+      ctx.lineTo(12, -2.5);
+      ctx.bezierCurveTo(14.5, 2, 13.5, 6, 9.5, 8.5);
+      ctx.lineTo(1, 4.5);
+      ctx.bezierCurveTo(-2, 0, -2, -4.5, 1.5, -7.5);
+      ctx.closePath();
+      ctx.fill();
+
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.55)';
+      ctx.lineWidth = 1.3;
+      ctx.beginPath();
+      ctx.arc(3.5, 0.5, 8, -0.9, 0.3);
+      ctx.stroke();
+
+      ctx.restore();
+      ctx.restore();
+      ctx.restore();
+    }
+
+    function drawRescueAmbulance(amb) {
+      ctx.save();
+      ctx.translate(amb.x, amb.y);
+
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
+      ctx.beginPath();
+      ctx.ellipse(90, 84, 85, 9, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath();
+      ctx.moveTo(0, 20);
+      ctx.lineTo(120, 20);
+      ctx.lineTo(150, 45);
+      ctx.lineTo(180, 52);
+      ctx.lineTo(180, 80);
+      ctx.lineTo(155, 80);
+      ctx.arc(140, 78, 16, 0, Math.PI, true);
+      ctx.lineTo(55, 80);
+      ctx.arc(40, 78, 16, 0, Math.PI, true);
+      ctx.lineTo(0, 80);
+      ctx.closePath();
+      ctx.fill();
+
+      ctx.fillStyle = '#ef4444';
+      ctx.fillRect(0, 52, 140, 10);
+
+      ctx.fillStyle = '#ef4444';
+      ctx.fillRect(45, 30, 8, 20);
+      ctx.fillRect(39, 36, 20, 8);
+
+      ctx.fillStyle = '#0284c7';
+      ctx.beginPath();
+      ctx.moveTo(122, 26);
+      ctx.lineTo(146, 46);
+      ctx.lineTo(122, 46);
+      ctx.closePath();
+      ctx.fill();
+
+      ctx.fillRect(70, 26, 45, 20);
+
+      const flash = Math.floor(Date.now() / 120) % 2 === 0;
+      ctx.fillStyle = flash ? '#ef4444' : '#3b82f6';
+      ctx.fillRect(45, 12, 22, 8);
+      ctx.fillStyle = flash ? '#3b82f6' : '#ef4444';
+      ctx.fillRect(67, 12, 22, 8);
+
+      ctx.fillStyle = flash ? 'rgba(239, 68, 68, 0.4)' : 'rgba(59, 130, 246, 0.4)';
+      ctx.beginPath();
+      ctx.arc(67, 16, 32, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.fillStyle = '#fef08a';
+      ctx.fillRect(174, 56, 6, 12);
+
+      drawCarWheel(40, 78, 0);
+      drawCarWheel(140, 78, 0);
+
+      ctx.fillStyle = '#ef4444';
+      ctx.font = 'bold 22px system-ui';
+      ctx.textAlign = 'center';
+      const bounce = Math.sin(Date.now() * 0.008) * 6;
+      ctx.fillText('❤️ MEDIC RECEIVED', 80, -12 + bounce);
+
+      ctx.restore();
+    }
+
+    function drawCrashCar(c) {
+      ctx.save();
+      ctx.translate(c.x, c.y);
+
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.35)';
+      ctx.beginPath();
+      ctx.ellipse(85, 58, 80, 8, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.fillStyle = '#e11d48';
+      ctx.beginPath();
+      ctx.moveTo(0, 48);
+      ctx.lineTo(25, 30);
+      ctx.lineTo(60, 16);
+      ctx.lineTo(125, 16);
+      ctx.lineTo(155, 32);
+      ctx.lineTo(170, 36);
+      ctx.lineTo(170, 52);
+      ctx.lineTo(145, 52);
+      ctx.arc(130, 50, 16, 0, Math.PI, true);
+      ctx.lineTo(55, 52);
+      ctx.arc(40, 50, 16, 0, Math.PI, true);
+      ctx.lineTo(0, 52);
+      ctx.closePath();
+      ctx.fill();
+
+      ctx.fillStyle = '#0f172a';
+      ctx.beginPath();
+      ctx.moveTo(0, 48);
+      ctx.lineTo(28, 30);
+      ctx.lineTo(34, 30);
+      ctx.lineTo(0, 52);
+      ctx.closePath();
+      ctx.fill();
+
+      ctx.fillStyle = '#0284c7';
+      ctx.beginPath();
+      ctx.moveTo(63, 19);
+      ctx.lineTo(122, 19);
+      ctx.lineTo(150, 32);
+      ctx.lineTo(32, 32);
+      ctx.closePath();
+      ctx.fill();
+
+      ctx.fillStyle = '#e11d48';
+      ctx.fillRect(88, 19, 6, 13);
+
+      ctx.fillStyle = '#fef08a';
+      ctx.beginPath();
+      ctx.moveTo(0, 42);
+      ctx.lineTo(12, 38);
+      ctx.lineTo(10, 48);
+      ctx.closePath();
+      ctx.fill();
+
+      const headBeam = ctx.createLinearGradient(0, 44, -120, 50);
+      headBeam.addColorStop(0, 'rgba(254, 240, 138, 0.7)');
+      headBeam.addColorStop(1, 'rgba(254, 240, 138, 0)');
+      ctx.fillStyle = headBeam;
+      ctx.beginPath();
+      ctx.moveTo(0, 40);
+      ctx.lineTo(-120, 10);
+      ctx.lineTo(-120, 80);
+      ctx.lineTo(0, 50);
+      ctx.closePath();
+      ctx.fill();
+
+      drawCarWheel(40, 50, c.wheelRotation);
+      drawCarWheel(130, 50, c.wheelRotation);
+
+      ctx.restore();
+    }
+
+    function drawCarWheel(x, y, rot) {
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(rot);
+
+      ctx.fillStyle = '#0f172a';
+      ctx.beginPath();
+      ctx.arc(0, 0, 15, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.fillStyle = '#94a3b8';
+      ctx.beginPath();
+      ctx.arc(0, 0, 8, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.strokeStyle = '#f8fafc';
+      ctx.lineWidth = 1.5;
+      for (let a = 0; a < 4; a++) {
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.lineTo(Math.cos(a * Math.PI / 2) * 8, Math.sin(a * Math.PI / 2) * 8);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+
+    function drawWheel(x, y, rot) {
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(rot);
+
+      ctx.fillStyle = '#1e293b';
+      ctx.beginPath();
+      ctx.arc(0, 0, 16, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.fillStyle = '#94a3b8';
+      ctx.beginPath();
+      ctx.arc(0, 0, 9, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.strokeStyle = '#f8fafc';
+      ctx.lineWidth = 1.5;
+      for (let a = 0; a < 4; a++) {
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.lineTo(Math.cos(a * Math.PI / 2) * 9, Math.sin(a * Math.PI / 2) * 9);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+
+    function drawPothole(obs) {
+      ctx.save();
+      ctx.translate(obs.x, obs.y);
+
+      ctx.fillStyle = '#090d16';
+      ctx.beginPath();
+      ctx.ellipse(45, 12, 48, 14, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.strokeStyle = '#1e293b';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(0, 12); ctx.lineTo(-14, 8); ctx.lineTo(-24, 15);
+      ctx.moveTo(90, 12); ctx.lineTo(108, 16); ctx.lineTo(116, 9);
+      ctx.stroke();
+
+      ctx.fillStyle = '#020617';
+      ctx.beginPath();
+      ctx.ellipse(45, 14, 36, 9, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.fillStyle = '#475569';
+      ctx.fillRect(36, -36, 5, 42);
+      ctx.fillRect(80, -36, 5, 42);
+
+      ctx.fillStyle = '#ea580c';
+      ctx.fillRect(28, -34, 66, 10);
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(38, -34, 10, 10);
+      ctx.fillRect(58, -34, 10, 10);
+      ctx.fillRect(78, -34, 10, 10);
+
+      ctx.fillStyle = '#ea580c';
+      ctx.fillRect(28, -18, 66, 10);
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(38, -18, 10, 10);
+      ctx.fillRect(58, -18, 10, 10);
+      ctx.fillRect(78, -18, 10, 10);
+
+      const isAmberFlash = Math.floor(Date.now() / 180) % 2 === 0;
+      ctx.fillStyle = '#1e293b';
+      ctx.fillRect(56, -46, 10, 12);
+
+      ctx.fillStyle = isAmberFlash ? '#facc15' : '#78350f';
+      ctx.beginPath();
+      ctx.arc(61, -48, 7, 0, Math.PI * 2);
+      ctx.fill();
+
+      if (isAmberFlash) {
+        ctx.fillStyle = 'rgba(250, 204, 21, 0.4)';
+        ctx.beginPath();
+        ctx.arc(61, -48, 18, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      drawSafetyCone(8, 14);
+      drawSafetyCone(88, 14);
+
+      if (obs.author) {
+        ctx.fillStyle = '#facc15';
+        ctx.font = 'bold 12px system-ui';
+        ctx.textAlign = 'center';
+        ctx.fillText("🎁 " + obs.author, 50, -56);
+      }
+      ctx.restore();
+    }
+
+    function drawSafetyCone(x, y) {
+      ctx.fillStyle = '#ea580c';
+      ctx.beginPath();
+      ctx.ellipse(x + 7, y, 11, 4, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      ctx.lineTo(x + 5, y - 24);
+      ctx.lineTo(x + 9, y - 24);
+      ctx.lineTo(x + 14, y);
+      ctx.closePath();
+      ctx.fill();
+
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath();
+      ctx.moveTo(x + 2, y - 8);
+      ctx.lineTo(x + 4, y - 16);
+      ctx.lineTo(x + 10, y - 16);
+      ctx.lineTo(x + 12, y - 8);
+      ctx.closePath();
+      ctx.fill();
+    }
+
+    function drawHelicopter(obs) {
+      ctx.save();
+      ctx.translate(obs.x, obs.y);
+
+      const duckedHeadY = (getGroundY() - player.height) + 26;
+      const beamBottomRelative = duckedHeadY - obs.y;
+
+      if (!cachedBeamGrad || cachedBeamHeight !== beamBottomRelative) {
+        cachedBeamHeight = beamBottomRelative;
+        cachedBeamGrad = ctx.createLinearGradient(10, 25, 10, beamBottomRelative);
+        cachedBeamGrad.addColorStop(0, 'rgba(254, 240, 138, 0.75)');
+        cachedBeamGrad.addColorStop(0.85, 'rgba(254, 240, 138, 0.25)');
+        cachedBeamGrad.addColorStop(1, 'rgba(254, 240, 138, 0.02)');
+      }
+
+      ctx.fillStyle = cachedBeamGrad;
+      ctx.beginPath();
+      ctx.moveTo(10, 25);
+      ctx.lineTo(28, 25);
+      ctx.lineTo(65, beamBottomRelative);
+      ctx.lineTo(-45, beamBottomRelative);
+      ctx.closePath();
+      ctx.fill();
+
+      ctx.fillStyle = 'rgba(254, 240, 138, 0.18)';
+      ctx.beginPath();
+      ctx.ellipse(10, beamBottomRelative, 55, 9, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.fillStyle = '#0f172a';
+      ctx.beginPath();
+      ctx.ellipse(30, 16, 42, 22, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.fillRect(-45, 12, 50, 7);
+      ctx.fillRect(-48, 2, 6, 24);
+
+      ctx.strokeStyle = '#475569';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(5, 38);
+      ctx.lineTo(55, 38);
+      ctx.moveTo(18, 30);
+      ctx.lineTo(18, 38);
+      ctx.moveTo(42, 30);
+      ctx.lineTo(42, 38);
+      ctx.stroke();
+
+      if (!isPaused && !isCrashActive) {
+        obs.rotorAngle += 0.45;
+      }
+      const bladeSpan = Math.cos(obs.rotorAngle) * 58;
+      ctx.strokeStyle = '#94a3b8';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(30 - bladeSpan, -4);
+      ctx.lineTo(30 + bladeSpan, -4);
+      ctx.stroke();
+
+      const flash = Math.floor(Date.now() / 150) % 2 === 0;
+      ctx.fillStyle = flash ? '#ef4444' : '#3b82f6';
+      ctx.beginPath();
+      ctx.arc(30, -5, 4, 0, Math.PI * 2);
+      ctx.fill();
+
+      if (obs.author) {
+        ctx.fillStyle = '#38bdf8';
+        ctx.textAlign = 'center';
+        ctx.fillText("🛸 " + obs.author, 0, -18);
+      }
+      ctx.restore();
+    }
+
+    function drawTrafficLight(tl) {
+      ctx.save();
+      ctx.translate(tl.x, tl.y);
+
+      ctx.fillStyle = '#475569';
+      ctx.fillRect(8, 30, 8, 80);
+
+      ctx.fillStyle = '#1e293b';
+      ctx.fillRect(0, 0, 24, 60);
+
+      ctx.fillStyle = '#ef4444';
+      ctx.beginPath(); ctx.arc(12, 12, 6, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#f59e0b';
+      ctx.beginPath(); ctx.arc(12, 30, 6, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#22c55e';
+      ctx.beginPath(); ctx.arc(12, 48, 6, 0, Math.PI * 2); ctx.fill();
+
+      ctx.restore();
+    }
+
+    let lastTime = performance.now();
+
+    function tick(currentTime) {
+      let delta = currentTime - lastTime;
+      lastTime = currentTime;
+
+      if (delta > 100) delta = 100;
+      if (delta < 1) delta = 1;
+
+      const timeScale = delta / (1000 / 60);
+
+      if (screenShake > 0) {
+        screenShake -= 0.6 * timeScale;
+        if (screenShake < 0) screenShake = 0;
+      }
+
+      updatePhysics(timeScale);
+      render();
+    }
+
+    function updatePhysics(ts) {
+      if (confettiList.length > 0) {
+        for (let i = 0; i < confettiList.length; i++) {
+          const c = confettiList[i];
+          c.y += c.vy * ts;
+          c.x += Math.sin(c.oscillation) * 1.5 * ts + c.vx * ts;
+          c.rotation += c.rotSpeed * ts;
+          c.oscillation += 0.05 * ts;
+
+          if (c.y > canvas.height + 20) {
+            c.y = -10;
+            c.x = Math.random() * canvas.width;
+          }
+        }
+      }
+
+      if (isCrashActive) {
+        const elapsed = Date.now() - crashStartTime;
+        const progress = Math.min(1.0, Math.max(0, elapsed / crashDuration));
+
+        crashCar.y = getGroundY() - 55;
+        const bikerFrontX = 160 + player.width - 25;
+
+        if (progress < 0.35) {
+          const p1 = progress / 0.35;
+          crashCar.x = (canvas.width + 150) + p1 * (bikerFrontX - (canvas.width + 150));
+          crashCar.wheelRotation -= 0.5 * ts;
+          player.x = 160;
+          player.rotation = 0;
+        } else {
+          const p2 = (progress - 0.35) / 0.65;
+          if (!hasTriggeredSparks) {
+            hasTriggeredSparks = true;
+            screenShake = 18;
+            createSparks(bikerFrontX, getGroundY() - 35);
+          }
+
+          player.x = 160 - p2 * 420;
+          player.rotation = -0.16;
+          player.wheelRotation -= 0.4 * ts;
+
+          crashCar.x = player.x + player.width - 25;
+          crashCar.wheelRotation -= 0.5 * ts;
+
+          if (Math.random() > 0.3) {
+            createSparks(crashCar.x, getGroundY() - 30);
+          }
+        }
+        return;
+      }
+
+      if (isPaused || isEndingSequence) return;
+
+      const moveStep = baseSpeed * ts;
+      scrollX += moveStep;
+
+      const groundY = getGroundY() - player.height;
+      player.vy += GRAVITY * ts;
+      player.y += player.vy * ts;
+
+      if (player.y >= groundY) {
+        player.y = groundY;
+        player.vy = 0;
+        player.isGrounded = true;
+      }
+
+      player.wheelRotation += 0.32 * ts;
+
+      if (player.duckTimer > 0) {
+        player.duckTimer -= ts;
+        if (player.duckTimer <= 0) player.isDucking = false;
+      }
+
+      if (player.manualSuppressionTimer > 0) {
+        player.manualSuppressionTimer -= ts;
+      }
+
+      // Auto-assistance runs every tick (with instant safety overrides)
+      handleBackgroundAssistance();
+
+      // Traffic Lights Spawning
+      nextTrafficLightDist -= moveStep;
+      if (nextTrafficLightDist <= 0) {
+        spawnTrafficLight();
+        nextTrafficLightDist = 340 + Math.random() * 140;
+      }
+
+      // Check Lights: Every 5 lights -> Queue completely random hazard
+      for (let i = trafficLights.length - 1; i >= 0; i--) {
+        const tl = trafficLights[i];
+        tl.x -= moveStep;
+
+        if (!tl.passed && tl.x < player.x) {
+          tl.passed = true;
+          socket.emit('adjustScore', 1);
+
+          lightsPassedCounter++;
+          if (lightsPassedCounter >= 5) {
+            lightsPassedCounter = 0;
+            const chosen = Math.random() < 0.5 ? 'pothole' : 'helicopter';
+            queueHazard(chosen, '');
+          }
+        }
+
+        if (tl.x < -100) trafficLights.splice(i, 1);
+      }
+
+      // Spawn Hazards
+      let rightmostX = 0;
+      for (let i = 0; i < obstacles.length; i++) {
+        if (obstacles[i].x > rightmostX) rightmostX = obstacles[i].x;
+      }
+
+      const canSpawn = (canvas.width - rightmostX) >= MIN_HAZARD_SPACING;
+
+      if (canSpawn && hazardQueue.length > 0) {
+        const nextHazard = hazardQueue.shift();
+        spawnQueuedHazard(nextHazard.type, nextHazard.author);
+      }
+
+      // Collision checks
+      for (let i = obstacles.length - 1; i >= 0; i--) {
+        const obs = obstacles[i];
+        obs.x -= moveStep;
+
+        if (!obs.passed && (obs.x + obs.width < player.x + 35)) {
+          obs.passed = true;
+        }
+
+        if (!obs.passed && !isEndingSequence) {
+          if (obs.type === 'pothole') {
+            const potholeLeft = obs.x + 15;
+            const potholeRight = obs.x + obs.width - 10;
+            const bikeLeft = player.x + 25;
+            const bikeRight = player.x + 95;
+
+            if (potholeLeft < bikeRight && potholeRight > bikeLeft) {
+              if (player.y >= groundY - 25) {
+                createDust(player.x + 50, getGroundY());
+                obs.passed = true;
+                triggerGameOverLoss('pothole');
+                break;
+              }
+            }
+          } else if (obs.type === 'helicopter') {
+            const beamLeft = obs.x - 20;
+            const beamRight = obs.x + 45;
+            const bikeLeft = player.x + 20;
+            const bikeRight = player.x + 90;
+
+            if (beamLeft < bikeRight && beamRight > bikeLeft) {
+              if (!player.isDucking) {
+                obs.passed = true;
+                triggerGameOverLoss('helicopter');
+                break;
+              }
+            }
+          }
+        }
+
+        if (obs.x < -160) obstacles.splice(i, 1);
+      }
+
+      // Dust particles
+      for (let i = particles.length - 1; i >= 0; i--) {
+        const p = particles[i];
+        p.x += p.vx * ts;
+        p.y += p.vy * ts;
+        p.alpha -= 0.03 * ts;
+        if (p.alpha <= 0) {
+          particles.splice(i, 1);
+        }
+      }
+    }
+
+    function render() {
+      ctx.save();
+
+      if (screenShake > 0) {
+        const shakeX = (Math.random() - 0.5) * screenShake;
+        const shakeY = (Math.random() - 0.5) * screenShake;
+        ctx.translate(shakeX, shakeY);
+      }
+
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.font = 'bold 12px system-ui';
+
+      drawBackground();
+
+      if (isWonState && rescueVehicle) {
+        drawRescueAmbulance(rescueVehicle);
+      }
+
+      for (let i = 0; i < trafficLights.length; i++) drawTrafficLight(trafficLights[i]);
+      for (let i = 0; i < obstacles.length; i++) {
+        if (obstacles[i].type === 'pothole') drawPothole(obstacles[i]);
+      }
+      
+      drawDoctorPlayer();
+
+      if (isCrashActive) {
+        drawCrashCar(crashCar);
+      }
+
+      for (let i = 0; i < obstacles.length; i++) {
+        if (obstacles[i].type === 'helicopter') drawHelicopter(obstacles[i]);
+      }
+
+      for (let i = 0; i < particles.length; i++) {
+        const p = particles[i];
+        ctx.fillStyle = p.color || `rgba(203, 213, 225, ${p.alpha})`;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      if (confettiList.length > 0) {
+        for (let i = 0; i < confettiList.length; i++) {
+          const c = confettiList[i];
+          ctx.save();
+          ctx.translate(c.x, c.y);
+          ctx.rotate(c.rotation);
+          ctx.fillStyle = c.color;
+          ctx.fillRect(-c.size / 2, -c.size / 4, c.size, c.size / 2);
+          ctx.restore();
+        }
+      }
+
+      ctx.restore();
+    }
+
+    const workerCode = `
+      let timer = null;
+      self.onmessage = function(e) {
+        if (e.data === 'start' && !timer) {
+          timer = setInterval(() => self.postMessage('tick'), 1000 / 60);
+        }
+      };
+    `;
+    const blob = new Blob([workerCode], { type: 'application/javascript' });
+    const bgWorker = new Worker(URL.createObjectURL(blob));
+    bgWorker.postMessage('start');
+
+    let lastRAFTime = performance.now();
+
+    bgWorker.onmessage = function() {
+      const now = performance.now();
+      if (now - lastRAFTime > 25) {
+        render();
+      }
+    };
+
+    function gameLoopWrapper(currentTime) {
+      lastRAFTime = currentTime;
+      tick(currentTime);
+      requestAnimationFrame(gameLoopWrapper);
+    }
+    requestAnimationFrame(gameLoopWrapper);
+  </script>
+</body>
+</html>
