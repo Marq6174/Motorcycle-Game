@@ -89,7 +89,7 @@ function triggerCrashResetSequence() {
   crashTimeout = setTimeout(() => {
     gameState.score = 0;
     gameState.isCrashing = false;
-    io.emit('scoreUpdated', { score: 0 });
+    io.emit('scoreUpdated', { score: 0, delta: 0, source: 'reset' });
     io.emit('resetCompleteNotification', { duration: 4 });
 
     resumeTimeout = setTimeout(() => {
@@ -100,10 +100,7 @@ function triggerCrashResetSequence() {
   }, gameState.crashDuration);
 }
 
-// --- TIKFINITY WEBHOOK ENDPOINTS ---
-
-// 1. Trigger Hazard Endpoint (GET or POST)
-// Example: http://localhost:3000/api/hazard?type=pothole&user=ViewerName
+// --- TIKFINITY WEBHOOKS ---
 app.all('/api/hazard', (req, res) => {
   const hazardType = req.body.type || req.query.type || 'pothole';
   const username = req.body.user || req.body.username || req.query.user || req.query.username || 'TikFinity';
@@ -117,12 +114,10 @@ app.all('/api/hazard', (req, res) => {
   res.json({ success: true, queued: hazardType, user: username });
 });
 
-// 2. Adjust Score Endpoint (Optional: for likes/follows/gifts to add points)
-// Example: http://localhost:3000/api/score?points=5
 app.all('/api/score', (req, res) => {
   const delta = parseInt(req.body.points || req.query.points || 5, 10);
   gameState.score += delta;
-  io.emit('scoreUpdated', { score: gameState.score });
+  io.emit('scoreUpdated', { score: gameState.score, delta: delta, source: 'gift' });
   checkServerGoal();
   res.json({ success: true, newScore: gameState.score });
 });
@@ -131,9 +126,19 @@ app.all('/api/score', (req, res) => {
 io.on('connection', (socket) => {
   socket.emit('stateSync', gameState);
 
-  socket.on('adjustScore', (delta) => {
+  socket.on('adjustScore', (payload) => {
+    let delta = 0;
+    let source = 'manual';
+
+    if (typeof payload === 'object' && payload !== null) {
+      delta = Number(payload.delta) || 0;
+      source = payload.source || 'manual';
+    } else {
+      delta = Number(payload) || 0;
+    }
+
     gameState.score += delta;
-    io.emit('scoreUpdated', { score: gameState.score });
+    io.emit('scoreUpdated', { score: gameState.score, delta: delta, source: source });
     checkServerGoal();
   });
 
@@ -148,7 +153,7 @@ io.on('connection', (socket) => {
     gameState.score = 0;
     gameState.gameWon = false;
     gameState.isPaused = false;
-    io.emit('scoreUpdated', { score: 0 });
+    io.emit('scoreUpdated', { score: 0, delta: 0, source: 'reset' });
     io.emit('gameResumed', { score: 0 });
   });
 
@@ -238,8 +243,8 @@ io.on('connection', (socket) => {
 server.listen(PORT, HOST, () => {
   console.log(`========================================================`);
   console.log(`🔒 Game Server running at http://${HOST}:${PORT}`);
-  console.log(`⚡ TikFinity Webhooks active:`);
-  console.log(`   - Hazard: http://localhost:3000/api/hazard?type=pothole&user={username}`);
+  console.log(`⚡ Webhooks:`);
+  console.log(`   - Hazard: http://localhost:3000/api/hazard?type=pothole&user=Name`);
   console.log(`   - Points: http://localhost:3000/api/score?points=5`);
   console.log(`========================================================`);
 });

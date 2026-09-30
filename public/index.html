@@ -25,7 +25,6 @@
       height: 100%;
     }
 
-    /* Centered Score HUD */
     #hud {
       position: absolute;
       top: 16px;
@@ -42,6 +41,7 @@
       display: flex;
       flex-direction: column;
       align-items: center;
+      transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
     }
     .hud-title {
       font-size: 11px;
@@ -62,6 +62,7 @@
       font-weight: 800;
       color: #38bdf8;
       line-height: 1;
+      transition: all 0.2s;
     }
     .goal-divider {
       font-size: 26px;
@@ -105,70 +106,6 @@
       letter-spacing: 1px;
     }
 
-    /* Dedicated Standalone TikTok Connection Box (Top-Left) */
-    #tiktokDock {
-      display: none;
-      position: absolute;
-      top: 16px;
-      left: 16px;
-      z-index: 15;
-      background: rgba(15, 23, 42, 0.94);
-      border: 1px solid #334155;
-      border-radius: 12px;
-      padding: 10px 14px;
-      box-shadow: 0 8px 30px rgba(0, 0, 0, 0.45);
-      backdrop-filter: blur(8px);
-      flex-direction: column;
-      gap: 8px;
-    }
-    #tiktokDock.visible { display: flex; }
-    
-    .tiktok-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 12px;
-      font-size: 12px;
-    }
-    .tiktok-title {
-      font-weight: 800;
-      color: #f43f5e;
-      display: flex;
-      align-items: center;
-      gap: 5px;
-      letter-spacing: 0.5px;
-    }
-    .tiktok-row {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-    }
-    #tiktokInput {
-      background: #0f172a;
-      border: 1px solid #475569;
-      color: #fff;
-      padding: 6px 10px;
-      border-radius: 6px;
-      font-size: 12px;
-      font-weight: 600;
-      width: 130px;
-      outline: none;
-    }
-    #tiktokInput:focus {
-      border-color: #38bdf8;
-    }
-    #tiktokStatusBadge {
-      padding: 2px 8px;
-      border-radius: 10px;
-      font-weight: 800;
-      font-size: 10px;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-    }
-    .status-connected { background: rgba(34, 197, 94, 0.2); color: #4ade80; border: 1px solid #22c55e; }
-    .status-disconnected { background: rgba(239, 68, 68, 0.2); color: #f87171; border: 1px solid #ef4444; }
-
-    /* Modals */
     .game-modal {
       display: none;
       position: absolute;
@@ -250,7 +187,6 @@
       letter-spacing: 1px;
     }
 
-    /* Enhanced Win Modal with Continue Controls */
     #win-modal {
       border: 4px solid #22c55e;
       background: radial-gradient(circle at top, rgba(16, 185, 129, 0.25), rgba(15, 23, 42, 0.98));
@@ -300,7 +236,6 @@
       margin: 10px 0 20px 0;
     }
 
-    /* Host Controls Dock (Bottom-Center) */
     #dock {
       display: none;
       position: absolute;
@@ -354,7 +289,6 @@
 <body>
 
   <div id="gameContainer">
-    <!-- Top-Center HUD -->
     <div id="hud">
       <div class="hud-title">Emergency Delivery Run</div>
       <div class="score-display">
@@ -367,19 +301,6 @@
       </div>
     </div>
 
-    <!-- SEPARATE TIKTOK LIVE CONNECTION PANEL (Top-Left) -->
-    <div id="tiktokDock">
-      <div class="tiktok-header">
-        <span class="tiktok-title"><span>📱</span> TikTok Stream</span>
-        <span id="tiktokStatusBadge" class="status-disconnected">Offline</span>
-      </div>
-      <div class="tiktok-row">
-        <input type="text" id="tiktokInput" placeholder="@username" />
-        <button class="btn btn-primary" onclick="connectTikTok()">Connect</button>
-      </div>
-    </div>
-
-    <!-- Animated "SAVED" Modal -->
     <div id="saved-modal" class="game-modal">
       <div id="saved-icon">💾</div>
       <div id="saved-title">SAVED!</div>
@@ -402,7 +323,6 @@
       <button class="btn btn-success" style="padding: 10px 24px; font-size: 14px;" onclick="resumeAfterResetNotification()">Continue (<span id="reset-done-timer">4</span>s)</button>
     </div>
 
-    <!-- PATIENT SAVED MODAL (With Continue & Next Goal Selector) -->
     <div id="win-modal" class="game-modal">
       <div id="win-title">PATIENT SAVED!</div>
       <div id="win-badge">★ Mission Accomplished ★</div>
@@ -426,7 +346,6 @@
       <button class="btn btn-danger" style="padding: 10px 24px; font-size: 14px;" onclick="resetGameAfterLoss()">Restarting (<span id="lose-timer">5</span>s)</button>
     </div>
 
-    <!-- SEPARATE HOST CONTROL DOCK (Bottom-Center) -->
     <div id="dock">
       <button id="pauseBtn" class="btn btn-primary" onclick="toggleManualPause()">Pause [P]</button>
       <button class="btn btn-success" onclick="triggerHostKey('w')">Win [W]</button>
@@ -457,18 +376,16 @@
     const JUMP_FORCE = -16.5;
     const baseSpeed = 9.6;
     const MIN_HAZARD_SPACING = 540;
-    const MAX_PARTICLES = 30;
+    const MAX_PARTICLES = 60;
 
     const canvas = document.getElementById('gameCanvas');
     const ctx = canvas.getContext('2d');
 
     const scoreValEl = document.getElementById('scoreVal');
+    const hudEl = document.getElementById('hud');
     const hudGoalInput = document.getElementById('hudGoalInput');
     const goalInput = document.getElementById('goalInput');
     const winNextGoalInput = document.getElementById('winNextGoalInput');
-    const tiktokDock = document.getElementById('tiktokDock');
-    const tiktokInput = document.getElementById('tiktokInput');
-    const tiktokStatusBadge = document.getElementById('tiktokStatusBadge');
     const savedModal = document.getElementById('saved-modal');
     const manualPauseModal = document.getElementById('manual-pause-modal');
     const pauseBtn = document.getElementById('pauseBtn');
@@ -483,10 +400,6 @@
     const dockEl = document.getElementById('dock');
 
     const urlParams = new URLSearchParams(window.location.search);
-    
-    if (urlParams.has('connect') || urlParams.has('streamer') || urlParams.has('host') || urlParams.has('admin')) {
-      tiktokDock.classList.add('visible');
-    }
     if (urlParams.has('host') || urlParams.has('admin')) {
       dockEl.classList.add('visible');
     }
@@ -525,8 +438,11 @@
 
     let rescueVehicle = null;
     const confettiList = [];
+    const floatingBadges = [];
+    const speedLines = [];
 
     let screenShake = 0;
+    let penaltyVignette = 0;
 
     let isCrashActive = false;
     let crashStartTime = 0;
@@ -543,6 +459,8 @@
 
     const player = {
       x: 160,
+      surgeX: 0,
+      surgeRotation: 0,
       y: getGroundY() - 90,
       width: 120,
       height: 90,
@@ -552,7 +470,8 @@
       isDucking: false,
       wheelRotation: 0,
       duckTimer: 0,
-      manualSuppressionTimer: 0
+      manualSuppressionTimer: 0,
+      turboTimer: 0
     };
 
     let scrollX = 0;
@@ -576,49 +495,106 @@
       if (document.activeElement !== hudGoalInput) hudGoalInput.value = goalScore;
       if (document.activeElement !== goalInput) goalInput.value = goalScore;
 
-      if (state.tiktokUser && document.activeElement !== tiktokInput) {
-        tiktokInput.value = state.tiktokUser;
-      }
-      updateTikTokBadge(state.tiktokConnected, state.tiktokUser);
-
       updatePauseUI();
       render();
-    });
-
-    socket.on('tiktokStatus', (data) => {
-      updateTikTokBadge(data.connected, data.username);
-    });
-
-    function updateTikTokBadge(connected, username) {
-      if (connected) {
-        tiktokStatusBadge.textContent = 'Live: @' + (username || '');
-        tiktokStatusBadge.className = 'status-connected';
-      } else {
-        tiktokStatusBadge.textContent = 'Offline';
-        tiktokStatusBadge.className = 'status-disconnected';
-      }
-    }
-
-    function connectTikTok() {
-      const u = tiktokInput.value.replace('@', '').trim();
-      if (u) {
-        socket.emit('setTikTokUser', u);
-        tiktokStatusBadge.textContent = 'Connecting...';
-        tiktokStatusBadge.className = 'status-disconnected';
-      }
-    }
-
-    tiktokInput.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') {
-        connectTikTok();
-        tiktokInput.blur();
-      }
     });
 
     socket.on('scoreUpdated', (data) => {
       score = data.score;
       scoreValEl.textContent = score;
+
+      if (data.source && data.source !== 'gameplay' && data.delta !== 0) {
+        if (data.delta > 0) {
+          triggerBoostEvent(data.delta);
+        } else {
+          triggerPenaltyEvent(data.delta);
+        }
+      }
     });
+
+    function triggerBoostEvent(delta) {
+      if (isCrashActive || isEndingSequence) return;
+
+      player.surgeX = Math.min(player.surgeX + 55, 95);
+      player.surgeRotation = 0.08;
+      player.turboTimer = 45;
+
+      hudEl.style.transform = 'translateX(-50%) scale(1.15)';
+      scoreValEl.style.color = '#4ade80';
+      setTimeout(() => {
+        hudEl.style.transform = 'translateX(-50%) scale(1)';
+        scoreValEl.style.color = '#38bdf8';
+      }, 350);
+
+      for (let i = 0; i < 8; i++) {
+        speedLines.push({
+          x: canvas.width + Math.random() * 200,
+          y: Math.random() * (canvas.height - ROAD_Y_OFFSET) + 80,
+          length: Math.random() * 90 + 70,
+          speed: Math.random() * 12 + 18,
+          alpha: 0.85
+        });
+      }
+
+      floatingBadges.push({
+        text: `⚡ +${delta} PTS BOOST!`,
+        x: player.x + player.surgeX + 60,
+        y: player.y - 30,
+        vy: -2.8,
+        alpha: 1.0,
+        type: 'boost'
+      });
+
+      for (let i = 0; i < 16; i++) {
+        particles.push({
+          x: player.x + player.surgeX + 12,
+          y: getGroundY() - 32,
+          vx: -(Math.random() * 12 + 8),
+          vy: (Math.random() - 0.5) * 4,
+          size: Math.random() * 5 + 3,
+          color: Math.random() > 0.4 ? '#38bdf8' : '#facc15',
+          alpha: 1.0
+        });
+      }
+    }
+
+    function triggerPenaltyEvent(delta) {
+      if (isCrashActive || isEndingSequence) return;
+
+      player.surgeX = Math.max(player.surgeX - 50, -75);
+      player.surgeRotation = -0.12;
+
+      screenShake = 9;
+      penaltyVignette = 0.55;
+
+      hudEl.style.transform = 'translateX(-50%) scale(0.92)';
+      scoreValEl.style.color = '#ef4444';
+      setTimeout(() => {
+        hudEl.style.transform = 'translateX(-50%) scale(1)';
+        scoreValEl.style.color = '#38bdf8';
+      }, 350);
+
+      floatingBadges.push({
+        text: `⚠️ ${delta} PTS`,
+        x: player.x + player.surgeX + 40,
+        y: player.y - 10,
+        vy: 1.6,
+        alpha: 1.0,
+        type: 'drop'
+      });
+
+      for (let i = 0; i < 18; i++) {
+        particles.push({
+          x: player.x + player.surgeX + (Math.random() > 0.5 ? 24 : 96),
+          y: getGroundY() - 8,
+          vx: -(Math.random() * 5 + 2),
+          vy: -(Math.random() * 3 + 1),
+          size: Math.random() * 8 + 5,
+          color: 'rgba(239, 68, 68, 0.8)',
+          alpha: 0.8
+        });
+      }
+    }
 
     socket.on('goalUpdated', (data) => {
       goalScore = data.goalScore;
@@ -706,6 +682,8 @@
       particles.length = 0;
 
       player.vy = 0;
+      player.surgeX = 0;
+      player.surgeRotation = 0;
       player.y = getGroundY() - player.height;
       player.isGrounded = true;
       player.isDucking = false;
@@ -721,7 +699,6 @@
 
       triggerConfettiExplosion();
 
-      // Propose next goal target: current goal + 250
       winNextGoalInput.value = (data.goalScore || goalScore) + 250;
       winModal.style.display = 'block';
 
@@ -761,6 +738,8 @@
       isWonState = false;
       rescueVehicle = null;
       confettiList.length = 0;
+      floatingBadges.length = 0;
+      speedLines.length = 0;
       lightsPassedCounter = 0;
       updatePauseUI();
 
@@ -769,6 +748,8 @@
       particles.length = 0;
 
       player.x = 160;
+      player.surgeX = 0;
+      player.surgeRotation = 0;
       player.y = getGroundY() - player.height;
       player.vy = 0;
       player.rotation = 0;
@@ -812,7 +793,7 @@
         player.duckTimer = 0;
         player.vy = JUMP_FORCE;
         player.isGrounded = false;
-        createDust(player.x + 30, getGroundY());
+        createDust(player.x + player.surgeX + 30, getGroundY());
       }
     }
 
@@ -858,7 +839,6 @@
       socket.emit('spawnHazard', { hazardType: type, username: 'Host' });
     }
 
-    // --- WIN MODAL ACTIONS ---
     function resetGameAfterWin() {
       winModal.style.display = 'none';
       isWonState = false;
@@ -882,10 +862,6 @@
       const key = e.key.toLowerCase();
       const isInputFocused = document.activeElement && (document.activeElement.tagName === 'INPUT');
 
-      if (key === 't' && !isInputFocused) {
-        tiktokDock.classList.toggle('visible');
-      }
-
       if (key === 'm' && !isInputFocused) {
         dockEl.classList.toggle('visible');
       }
@@ -896,12 +872,12 @@
       if (key === 'l') socket.emit('forceResetCrash');
       if (key === 'h') spawnHostHazard('helicopter');
       if (key === 'b') spawnHostHazard('pothole');
-      if (key === 'f') socket.emit('adjustScore', 5);
 
-      if (key === 'u') socket.emit('adjustScore', 100);
-      if (key === 'v') socket.emit('adjustScore', 1000);
-      if (key === 'd') socket.emit('adjustScore', -100);
-      if (key === 'g') socket.emit('adjustScore', -1000);
+      if (key === 'f') socket.emit('adjustScore', { delta: 5, source: 'manual' });
+      if (key === 'u') socket.emit('adjustScore', { delta: 100, source: 'manual' });
+      if (key === 'v') socket.emit('adjustScore', { delta: 1000, source: 'manual' });
+      if (key === 'd') socket.emit('adjustScore', { delta: -100, source: 'manual' });
+      if (key === 'g') socket.emit('adjustScore', { delta: -1000, source: 'manual' });
 
       if (key === 'p') toggleManualPause();
       if (key === 'r') socket.emit('initiateResetCountdown');
@@ -1017,13 +993,15 @@
       particles.length = 0;
       lightsPassedCounter = 0;
       player.x = 160;
+      player.surgeX = 0;
+      player.surgeRotation = 0;
       player.vy = 0;
       player.rotation = 0;
       player.y = getGroundY() - player.height;
       player.isGrounded = true;
       player.isDucking = false;
 
-      socket.emit('adjustScore', -score);
+      socket.emit('adjustScore', { delta: -score, source: 'gameplay' });
     }
 
     function createDust(x, y) {
@@ -1058,9 +1036,11 @@
     function handleBackgroundAssistance() {
       if (isCrashActive || isEndingSequence) return;
 
+      const currentEffectiveX = player.x + player.surgeX;
+
       for (let i = 0; i < obstacles.length; i++) {
         const obs = obstacles[i];
-        const dist = obs.x - (player.x + player.width);
+        const dist = obs.x - (currentEffectiveX + player.width);
 
         if (obs.type === 'pothole') {
           if (dist > 0 && dist < 230 && player.isGrounded) {
@@ -1147,14 +1127,38 @@
 
     function drawDoctorPlayer() {
       ctx.save();
-      ctx.translate(player.x, player.y);
-      if (player.rotation !== 0) {
-        ctx.rotate(player.rotation);
+      ctx.translate(player.x + player.surgeX, player.y);
+      const totalRot = (player.rotation || 0) + (player.surgeRotation || 0);
+      if (totalRot !== 0) {
+        ctx.rotate(totalRot);
       }
 
       let duckOffset = player.isDucking ? 22 : 0;
       const bounce = player.isGrounded && !isPaused && !isCrashActive ? Math.sin(Date.now() * 0.045) * 1.5 : 0;
       ctx.translate(0, bounce);
+
+      if (player.turboTimer > 0 || player.surgeX > 15) {
+        ctx.save();
+        const flameLength = Math.random() * 30 + 35;
+        const flameHeight = Math.random() * 8 + 10;
+        
+        ctx.fillStyle = '#0ea5e9';
+        ctx.beginPath();
+        ctx.moveTo(8, 62);
+        ctx.lineTo(-flameLength, 62);
+        ctx.lineTo(8, 62 + flameHeight);
+        ctx.closePath();
+        ctx.fill();
+
+        ctx.fillStyle = '#fef08a';
+        ctx.beginPath();
+        ctx.moveTo(8, 63);
+        ctx.lineTo(-flameLength * 0.6, 63);
+        ctx.lineTo(8, 63 + flameHeight * 0.6);
+        ctx.closePath();
+        ctx.fill();
+        ctx.restore();
+      }
 
       drawWheel(22, 68, player.wheelRotation);
       drawWheel(96, 68, player.wheelRotation);
@@ -1228,7 +1232,6 @@
       ctx.lineTo(84, 36);
       ctx.stroke();
 
-      // Helmet
       ctx.save();
       ctx.translate(68, 16);
 
@@ -1695,11 +1698,41 @@
         if (screenShake < 0) screenShake = 0;
       }
 
+      if (penaltyVignette > 0) {
+        penaltyVignette -= 0.02 * timeScale;
+        if (penaltyVignette < 0) penaltyVignette = 0;
+      }
+
       updatePhysics(timeScale);
       render();
     }
 
     function updatePhysics(ts) {
+      player.surgeX += (0 - player.surgeX) * 0.075 * ts;
+      player.surgeRotation += (0 - player.surgeRotation) * 0.1 * ts;
+
+      if (player.turboTimer > 0) {
+        player.turboTimer -= ts;
+      }
+
+      for (let i = speedLines.length - 1; i >= 0; i--) {
+        const sl = speedLines[i];
+        sl.x -= sl.speed * ts;
+        sl.alpha -= 0.025 * ts;
+        if (sl.x < -150 || sl.alpha <= 0) {
+          speedLines.splice(i, 1);
+        }
+      }
+
+      for (let i = floatingBadges.length - 1; i >= 0; i--) {
+        const badge = floatingBadges[i];
+        badge.y += badge.vy * ts;
+        badge.alpha -= 0.016 * ts;
+        if (badge.alpha <= 0) {
+          floatingBadges.splice(i, 1);
+        }
+      }
+
       if (confettiList.length > 0) {
         for (let i = 0; i < confettiList.length; i++) {
           const c = confettiList[i];
@@ -1778,21 +1811,19 @@
 
       handleBackgroundAssistance();
 
-      // Traffic Lights Spawning
       nextTrafficLightDist -= moveStep;
       if (nextTrafficLightDist <= 0) {
         spawnTrafficLight();
         nextTrafficLightDist = 340 + Math.random() * 140;
       }
 
-      // Check Lights: Every 5 lights -> Queue random hazard
       for (let i = trafficLights.length - 1; i >= 0; i--) {
         const tl = trafficLights[i];
         tl.x -= moveStep;
 
-        if (!tl.passed && tl.x < player.x) {
+        if (!tl.passed && tl.x < (player.x + player.surgeX)) {
           tl.passed = true;
-          socket.emit('adjustScore', 1);
+          socket.emit('adjustScore', { delta: 1, source: 'gameplay' });
 
           lightsPassedCounter++;
           if (lightsPassedCounter >= 5) {
@@ -1805,7 +1836,6 @@
         if (tl.x < -100) trafficLights.splice(i, 1);
       }
 
-      // Spawn Hazards
       let rightmostX = 0;
       for (let i = 0; i < obstacles.length; i++) {
         if (obstacles[i].x > rightmostX) rightmostX = obstacles[i].x;
@@ -1818,12 +1848,13 @@
         spawnQueuedHazard(nextHazard.type, nextHazard.author);
       }
 
-      // Collision checks
+      const effectivePlayerX = player.x + player.surgeX;
+
       for (let i = obstacles.length - 1; i >= 0; i--) {
         const obs = obstacles[i];
         obs.x -= moveStep;
 
-        if (!obs.passed && (obs.x + obs.width < player.x + 35)) {
+        if (!obs.passed && (obs.x + obs.width < effectivePlayerX + 35)) {
           obs.passed = true;
         }
 
@@ -1831,12 +1862,12 @@
           if (obs.type === 'pothole') {
             const potholeLeft = obs.x + 15;
             const potholeRight = obs.x + obs.width - 10;
-            const bikeLeft = player.x + 25;
-            const bikeRight = player.x + 95;
+            const bikeLeft = effectivePlayerX + 25;
+            const bikeRight = effectivePlayerX + 95;
 
             if (potholeLeft < bikeRight && potholeRight > bikeLeft) {
               if (player.y >= groundY - 25) {
-                createDust(player.x + 50, getGroundY());
+                createDust(effectivePlayerX + 50, getGroundY());
                 obs.passed = true;
                 triggerGameOverLoss('pothole');
                 break;
@@ -1845,8 +1876,8 @@
           } else if (obs.type === 'helicopter') {
             const beamLeft = obs.x - 20;
             const beamRight = obs.x + 45;
-            const bikeLeft = player.x + 20;
-            const bikeRight = player.x + 90;
+            const bikeLeft = effectivePlayerX + 20;
+            const bikeRight = effectivePlayerX + 90;
 
             if (beamLeft < bikeRight && beamRight > bikeLeft) {
               if (!player.isDucking) {
@@ -1861,7 +1892,6 @@
         if (obs.x < -160) obstacles.splice(i, 1);
       }
 
-      // Dust particles
       for (let i = particles.length - 1; i >= 0; i--) {
         const p = particles[i];
         p.x += p.vx * ts;
@@ -1886,6 +1916,16 @@
       ctx.font = 'bold 12px system-ui';
 
       drawBackground();
+
+      for (let i = 0; i < speedLines.length; i++) {
+        const sl = speedLines[i];
+        ctx.strokeStyle = `rgba(56, 189, 248, ${sl.alpha})`;
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.moveTo(sl.x, sl.y);
+        ctx.lineTo(sl.x + sl.length, sl.y);
+        ctx.stroke();
+      }
 
       if (isWonState && rescueVehicle) {
         drawRescueAmbulance(rescueVehicle);
@@ -1912,6 +1952,49 @@
         ctx.beginPath();
         ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
         ctx.fill();
+      }
+
+      for (let i = 0; i < floatingBadges.length; i++) {
+        const b = floatingBadges[i];
+        ctx.save();
+        ctx.translate(b.x, b.y);
+        ctx.globalAlpha = Math.max(0, b.alpha);
+
+        if (b.type === 'boost') {
+          ctx.fillStyle = 'rgba(15, 23, 42, 0.9)';
+          ctx.strokeStyle = '#22c55e';
+          ctx.lineWidth = 2.5;
+          ctx.beginPath();
+          ctx.roundRect(-80, -22, 160, 36, 18);
+          ctx.fill();
+          ctx.stroke();
+
+          ctx.font = '900 17px system-ui';
+          ctx.fillStyle = '#4ade80';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(b.text, 0, -4);
+        } else {
+          ctx.fillStyle = 'rgba(15, 23, 42, 0.92)';
+          ctx.strokeStyle = '#ef4444';
+          ctx.lineWidth = 2.5;
+          ctx.beginPath();
+          ctx.roundRect(-70, -20, 140, 34, 17);
+          ctx.fill();
+          ctx.stroke();
+
+          ctx.font = '900 17px system-ui';
+          ctx.fillStyle = '#f87171';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(b.text, 0, -3);
+        }
+        ctx.restore();
+      }
+
+      if (penaltyVignette > 0) {
+        ctx.fillStyle = `rgba(239, 68, 68, ${penaltyVignette * 0.35})`;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
       }
 
       if (confettiList.length > 0) {
